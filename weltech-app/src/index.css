@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 1. บังคับฟอนต์ให้ครอบคลุมถึงพวก Input และ Button ด้วย */
+* {
+  font-family: 'Prompt', sans-serif !important;
+}
+
+body {
+  font-family: 'Prompt', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 2. เพิ่มส่วนนี้เพื่อให้การเปลี่ยนธีม (Dark/Light) สมูทขึ้น */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 3. แก้ปัญหา Tailwind Custom Scrollbar (ถ้ามี) */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: #e2e8f0; /* สีเทาอ่อน */
+  border-radius: 10px;
+}
