@@ -1,5 +1,5 @@
 from flask import Flask, jsonify, request
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from ultralytics import YOLO
 import cv2
 import os
@@ -7,9 +7,11 @@ import threading
 import base64
 import numpy as np
 import datetime
+import gc  # เพิ่ม import gc เพื่อจัดการคืนพื้นที่ RAM
 
 app = Flask(__name__)
-CORS(app)
+# อนุญาต CORS และ Headers ทุกประเภท ป้องกันปัญหา Cross-Origin
+CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*"}})
 
 # --- ⚙️ ตั้งค่า (CONFIG) ---
 MODEL_PATH = "best.pt" 
@@ -36,7 +38,7 @@ CLASS_COLORS = {
     'eosinophil': (0, 0, 255),
     'basophil':   (255, 0, 255),
     'platelet':   (128, 128, 128),
-    'rbc':         (200, 200, 200)
+    'rbc':        (200, 200, 200)
 }
 DEFAULT_COLOR = (255, 255, 255)
 
@@ -104,9 +106,13 @@ def run_detection_process(source):
 
 # --- API Endpoints ---
 
-@app.route('/start-smart-lab', methods=['GET'])
+# สร้างหน้าแรกไว้เช็คสถานะแยกต่างหาก
+@app.route('/', methods=['GET'])
 def index():
     return jsonify({"status": "online", "message": "WelTech AI Server is running"}), 200
+
+# API สำหรับเปิดกล้อง
+@app.route('/start-smart-lab', methods=['GET'])
 def start_smart_lab():
     global is_running
     if is_running:
@@ -120,18 +126,29 @@ def start_smart_lab():
     thread.start()
     return jsonify({"status": "success", "message": f"เปิด Source: {src}"})
 
-@app.route('/process-frame', methods=['POST'])
+# API สำหรับประมวลผลเฟรมภาพจากเบราว์เซอร์
+# เพิ่ม OPTIONS เพื่อรองรับ Preflight Request ของเบราว์เซอร์
+@app.route('/process-frame', methods=['POST', 'OPTIONS'])
+@cross_origin()
 def process_frame():
+    # จัดการ Preflight Request ทันทีโดยไม่ต้องประมวลผลรูป
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
     try:
         data = request.json
         image_b64 = data.get('image')
         if not image_b64:
             return jsonify({"status": "error", "message": "No image data"}), 400
 
-        # แปลง base64 เป็น OpenCV Image
-        encoded_data = image_b64.split(',')[1]
+        # ตัด Header และแปลง base64 เป็น OpenCV Image อย่างปลอดภัย
+        encoded_data = image_b64.split(',')[1] if ',' in image_b64 else image_b64
         nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # แก้ไข Indentation Error (ย่อหน้าผิด) ตรงนี้
+        if frame is None:
+            return jsonify({"status": "error", "message": "ไม่สามารถอ่านรูปภาพได้ (Image Decode Failed)"}), 400
 
         # AI Predict
         results = model(frame, imgsz=640, conf=CONF_THRESHOLD, verbose=False)
@@ -143,13 +160,31 @@ def process_frame():
             name = model.names[cls_id] if cls_id in model.names else f"class_{cls_id}"
             counts[name] = counts.get(name, 0) + 1
 
+        # นำภาพไปวาดกรอบ Bounding Box ด้วยฟังก์ชันที่เตรียมไว้
+        processed_frame = draw_predictions(frame.copy(), results)
+
+        # แปลงรูปภาพที่วาดกรอบแล้ว กลับเป็น Base64
+        _, buffer = cv2.imencode('.jpg', processed_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        processed_b64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # เติม Header ของรูปกลับเข้าไป
+        final_processed_image = f"data:image/jpeg;base64,{processed_b64}"
+
         return jsonify({
             "status": "success",
             "counts": counts,
-            "total": len(results[0].boxes)
+            "total": len(results[0].boxes),
+            "processed_image": final_processed_image
         })
+        
     except Exception as e:
+        import traceback
+        traceback.print_exc() # พิมพ์ error ลง console เพื่อให้หาบั๊กง่ายขึ้น
         return jsonify({"status": "error", "message": str(e)}), 500
+        
+    finally:
+        # บังคับเคลียร์ RAM ทุกครั้งหลังทำงานเสร็จ เพื่อป้องกันปัญหา Out of Memory บน Render
+        gc.collect()
 
 @app.route('/stop-smart-lab', methods=['GET'])
 def stop_smart_lab():
@@ -158,5 +193,6 @@ def stop_smart_lab():
     return jsonify({"status": "success", "message": "สั่งปิดกล้องเรียบร้อย"})
 
 if __name__ == '__main__':
-    # รันบน 0.0.0.0 เพื่อให้เข้าถึงผ่านวง LAN ได้
-    app.run(host='0.0.0.0', port=5000)
+    # การตั้งค่า Port สำหรับระบบ Cloud (เช่น Render/Heroku)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

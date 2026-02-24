@@ -21,18 +21,20 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
     const [currentRecordId, setCurrentRecordId] = useState(null); 
     const [isSaved, setIsSaved] = useState(false);
 
-    // --- AI Server & Network State (จุดที่แก้ไข: ล็อค URL ถาวร) ---
+    // --- AI Server & Network State ---
     const [isAiRunning, setIsAiRunning] = useState(false);
     const [aiLoading, setAiLoading] = useState(false);
-    // เปลี่ยนจาก useState เป็นค่าคงที่เพื่อล็อค URL ถาวรตามที่จองโดเมนไว้
-    const serverIp = 'http://127.0.0.1:5000';
-    const [cameraSource, setCameraSource] = useState('1'); 
+    const serverIp = 'https://weltech-app.onrender.com'; // ล็อค URL ตามที่จองไว้
+    const [cameraSource, setCameraSource] = useState('device'); 
 
-    // --- Local Stream State สำหรับกล้องมือถือ ---
+    // --- Local Stream State สำหรับการ Monitor บนคอมพิวเตอร์ ---
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const streamIntervalRef = useRef(null);
     const [isLocalStreamActive, setIsLocalStreamActive] = useState(false);
+    
+    // State ใหม่สำหรับเก็บภาพที่รับกลับมาจาก AI Server
+    const [aiProcessedImage, setAiProcessedImage] = useState(null);
 
     const [patientVitals, setPatientVitals] = useState({ idCard: '', bloodType: '', weight: '', height: '', bmi: '' });
     const [labData, setLabData] = useState({ hb: '', hct: '', mcv: '', plt: '', wbc: '', neut: '', lymph: '', mono: '', eo: '', baso: '' });
@@ -45,14 +47,33 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
         String(p.assigned_doctor) === String(userProfile?.id)
     ) || [];
 
-    // ล้าง Interval เมื่อปิดหน้าจอ
+    // --- ฟังก์ชันค้นหา ID ของ DroidCam ในเครื่องคอมพิวเตอร์ ---
+    const getDroidCamDeviceId = async () => {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            
+            const droidCam = videoDevices.find(d => d.label.toLowerCase().includes('droidcam'));
+            if (droidCam) return droidCam.deviceId;
+            
+            return videoDevices.length > 0 ? videoDevices[0].deviceId : null;
+        } catch (error) {
+            console.error("Error searching for Camera:", error);
+            return null;
+        }
+    };
+
+    // ล้าง Interval และปิดสตรีมกล้องเมื่อปิดหน้าจอเพื่อไม่ให้กล้องค้าง
     useEffect(() => {
         return () => {
             if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
+            if (videoRef.current && videoRef.current.srcObject) {
+                videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+            }
         };
     }, []);
 
-    // --- ฟังก์ชันส่งภาพจากเบราว์เซอร์ไปยัง Server ---
+    // --- ฟังก์ชันส่งภาพจากเบราว์เซอร์ไปยัง Server และรับภาพกลับมา ---
     const sendFrameToServer = async () => {
         if (!canvasRef.current || !videoRef.current) return;
         const canvas = canvasRef.current;
@@ -63,62 +84,93 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
         const base64Image = canvas.toDataURL('image/jpeg', 0.5); 
 
         try {
-            await fetch(`${serverIp}/process-frame`, {
+            // ส่งภาพไปให้โมเดล YOLOv26 บน Backend ประมวลผล
+            const response = await fetch(`${serverIp}/process-frame`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image: base64Image })
             });
+            
+            const data = await response.json();
+            
+            // อัปเดตภาพที่มีกรอบ Bounding Box กลับมาแสดงผล
+            if (data && data.processed_image) {
+                setAiProcessedImage(data.processed_image);
+            }
         } catch (error) {
             console.error("Frame transmission error:", error);
         }
     };
 
+    // --- ฟังก์ชัน toggleAiCamera ---
     const toggleAiCamera = async () => {
-    setAiLoading(true);
+        setAiLoading(true);
 
-    if (cameraSource === 'device') {
-        if (!isLocalStreamActive) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } 
-                });
-                videoRef.current.srcObject = stream;
-                setIsLocalStreamActive(true);
-                setIsAiRunning(true);
-                streamIntervalRef.current = setInterval(sendFrameToServer, 800); 
-            } catch (err) {
-                alert("กรุณาอนุญาตการเข้าถึงกล้อง");
+        if (cameraSource === 'device') {
+            if (!isLocalStreamActive) {
+                try {
+                    const droidCamId = await getDroidCamDeviceId();
+                    const constraints = { 
+                        video: droidCamId 
+                            ? { deviceId: { exact: droidCamId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                            : { width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    };
+
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                        
+                        videoRef.current.muted = true;
+                        videoRef.current.setAttribute("playsinline", true);
+                        
+                        try {
+                            await videoRef.current.play();
+                        } catch (playErr) {
+                            console.error("Video play error:", playErr);
+                        }
+
+                        setIsLocalStreamActive(true);
+                        setIsAiRunning(true);
+                        
+                        // เริ่มส่งเฟรมและเคลียร์ภาพเก่า
+                        setAiProcessedImage(null);
+                        streamIntervalRef.current = setInterval(sendFrameToServer, 2000); 
+                    }
+                } catch (err) {
+                    console.error("Camera access error:", err);
+                    alert("ไม่พบกล้องภายนอก (DroidCam) โปรดตรวจสอบว่าคุณได้กด Start ในโปรแกรม DroidCam บนคอมพิวเตอร์แล้ว");
+                }
+            } else {
+                if (videoRef.current && videoRef.current.srcObject) {
+                    videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+                }
+                clearInterval(streamIntervalRef.current);
+                setIsLocalStreamActive(false);
+                setIsAiRunning(false);
+                setAiProcessedImage(null); // เคลียร์ภาพ AI เมื่อปิดกล้อง
             }
-        } else {
-            if (videoRef.current.srcObject) {
-                videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+            setAiLoading(false);
+            return;
+        }
+
+        const endpoint = isAiRunning 
+            ? `${serverIp}/stop-smart-lab` 
+            : `${serverIp}/start-smart-lab?source=${encodeURIComponent(cameraSource)}`;
+
+        try {
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            if (data.status === 'success' || data.status === 'warning') {
+                setIsAiRunning(!isAiRunning);
             }
-            clearInterval(streamIntervalRef.current);
-            setIsLocalStreamActive(false);
-            setIsAiRunning(false);
+        } catch (error) {
+            alert("ไม่สามารถเชื่อมต่อกับ AI Server ได้ กรุณารอเซิร์ฟเวอร์ Render ตื่นประมาณ 1 นาที");
+        } finally {
+            setAiLoading(false);
         }
-        setAiLoading(false);
-        return;
-    }
+    };
 
-    const endpoint = isAiRunning 
-     ? `${serverIp}/stop-smart-lab` 
-     : `${serverIp}/start-smart-lab?source=${encodeURIComponent(cameraSource)}`;
-
-    try {
-        const response = await fetch(endpoint);
-        const data = await response.json();
-        if (data.status === 'success' || data.status === 'warning') {
-            setIsAiRunning(!isAiRunning);
-        }
-    } catch (error) {
-        alert("ไม่สามารถเชื่อมต่อกับ AI Server ได้ กรุณาตรวจสอบ ngrok");
-    } finally {
-        setAiLoading(false);
-    }
-};
-
-    // --- ส่วน Logic การจัดการข้อมูล (คงเดิมทั้งหมด ห้ามตัดออก) ---
+    // --- Logic การจัดการข้อมูล ---
     const logActivity = async (action, patientObj, details = '') => {
         try {
             const actor = `${userProfile?.title_th || ''}${userProfile?.first_name_th || ''} ${userProfile?.last_name_th || ''}`.trim();
@@ -182,6 +234,7 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
     const getInChargeDoctor = () => getPatient()?.doctor_name || getPatient()?.doctor_in_charge || 
         `${userProfile?.title_th || 'นพ.'} ${userProfile?.first_name_th || ''} ${userProfile?.last_name_th || ''}`.trim();
 
+    // --- แก้ไขโครงสร้าง HTML ให้แสดงผลตารางได้ถูกต้อง ---
     const getReportHtml = (barcodeImg = '', qrCodeImg = '') => {
         const p = getPatient();
         const patientHN = p?.hn || 'Unknown';
@@ -196,10 +249,76 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
             const ref = getRefRange(k, age, checkIsFemale() ? 'female' : 'male', isPregnant);
             const num = parseFloat(labData[k]);
             const isOut = !isNaN(num) && (num < ref.min || num > ref.max);
-            return `<tr style="font-size: 12pt;"><td style="padding: 5px; border-bottom: 1px dotted #ccc;">${REFERENCE_RANGES[k]?.name || k}</td><td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc;">${labData[k] || '-'}</td><td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc;">${ref.unit}</td><td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc; font-size: 12pt;">${ref.ref}</td><td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc; color: ${isOut ? 'red' : 'black'}; font-weight: bold;">${isOut ? (num < ref.min ? 'ต่ำ' : 'สูง') : 'ปกติ'}</td></tr>`;
+            return `<tr style="font-size: 12pt;">
+                <td style="padding: 5px; border-bottom: 1px dotted #ccc;">${REFERENCE_RANGES[k]?.name || k}</td>
+                <td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc;">${labData[k] || '-'}</td>
+                <td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc;">${ref.unit}</td>
+                <td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc; font-size: 12pt;">${ref.ref}</td>
+                <td align="left" style="padding: 5px; border-bottom: 1px dotted #ccc; color: ${isOut ? 'red' : 'black'}; font-weight: bold;">${isOut ? (num < ref.min ? 'ต่ำ' : 'สูง') : 'ปกติ'}</td>
+            </tr>`;
         }).join('');
 
-        return `<html><head><meta charset="utf-8"><style>@page { size: A4; margin: 0; } @media print { body { margin: 0; padding: 0; } .page-container { width: 210mm; height: 297mm; padding: 1.5cm 2.0cm 1.5cm 3.0cm; box-sizing: border-box; page-break-after: always; } } body { font-family: 'TH Sarabun New', sans-serif; background: #f0f0f0; margin: 0; display: flex; justify-content: center; } .page-container { background: white; width: 210mm; min-height: 297mm; padding: 1.5cm 2.0cm 1.5cm 3.0cm; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); } table { width: 100%; border-collapse: collapse; } .lab-table th { padding: 6px 4px; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; text-align: left; font-size: 12pt; background: #fafafa; } .info-box { margin: 10px 0; font-size: 12.5pt; border: 0.5px solid #ccc; padding: 12px; border-radius: 4px; line-height: 1.3; } .note-box { margin-top: 10px; border: 1px dashed #aaa; padding: 8px 12px; border-radius: 4px; font-size: 12pt; min-height: 50px; }</style></head><body><div class="page-container"><table width="100%"><tr><td width="15%" valign="middle">${logoBase64 ? `<img src="${logoBase64}" width="80"/>` : ''}</td><td width="55%" align="center" valign="middle"><div style="font-size: 20pt; font-weight: bold;">รายงานผลการตรวจวิเคราะห์เลือด</div><div style="font-size: 16pt;">Hematology Laboratory Report</div></td><td width="30%" align="right" valign="top"><div style="display: inline-block; text-align: center;"><img src="${barcodeImg}" width="170"/><div style="font-size: 11pt; font-weight: bold; margin-top: 2px;">${patientHN}</div></div></td></tr></table><div class="info-box">...</div></div></body></html>`;
+        return `<html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                @page { size: A4; margin: 0; } 
+                @media print { 
+                    body { margin: 0; padding: 0; } 
+                    .page-container { width: 210mm; height: 297mm; padding: 1.5cm 2.0cm 1.5cm 3.0cm; box-sizing: border-box; page-break-after: always; } 
+                } 
+                body { font-family: 'TH Sarabun New', sans-serif; background: #f0f0f0; margin: 0; display: flex; justify-content: center; } 
+                .page-container { background: white; width: 210mm; min-height: 297mm; padding: 1.5cm 2.0cm 1.5cm 3.0cm; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); } 
+                table { width: 100%; border-collapse: collapse; } 
+                .lab-table { width: 100%; margin-top: 20px; }
+                .lab-table th { padding: 6px 4px; border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; text-align: left; font-size: 12pt; background: #fafafa; } 
+                .info-box { margin: 10px 0; font-size: 12.5pt; border: 0.5px solid #ccc; padding: 12px; border-radius: 4px; line-height: 1.3; } 
+                .note-box { margin-top: 10px; border: 1px dashed #aaa; padding: 8px 12px; border-radius: 4px; font-size: 12pt; min-height: 50px; }
+            </style>
+        </head>
+        <body>
+            <div class="page-container">
+                <table width="100%">
+                    <tr>
+                        <td width="15%" valign="middle">${logoBase64 ? `<img src="${logoBase64}" width="80"/>` : ''}</td>
+                        <td width="55%" align="center" valign="middle">
+                            <div style="font-size: 20pt; font-weight: bold;">รายงานผลการตรวจวิเคราะห์เลือด</div>
+                            <div style="font-size: 16pt;">Hematology Laboratory Report</div>
+                        </td>
+                        <td width="30%" align="right" valign="top">
+                            <div style="display: inline-block; text-align: center;">
+                                <img src="${barcodeImg}" width="170"/>
+                                <div style="font-size: 11pt; font-weight: bold; margin-top: 2px;">HN: ${patientHN}</div>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+                <div class="info-box">
+                    <p><strong>ชื่อ-สกุล:</strong> ${patientName} <strong>อายุ:</strong> ${age} ปี <strong>เพศ:</strong> ${gender}</p>
+                    <p><strong>แพทย์ผู้ดูแล:</strong> ${inChargeDoctor}</p>
+                    <p><strong>วันที่พิมพ์รายงาน:</strong> ${today} <strong>เวลา:</strong> ${time}</p>
+                </div>
+                <table class="lab-table">
+                    <thead>
+                        <tr>
+                            <th>รายการตรวจ (Test)</th>
+                            <th>ผลลัพธ์ (Result)</th>
+                            <th>หน่วย (Unit)</th>
+                            <th>ค่าอ้างอิง (Ref. Range)</th>
+                            <th>แปลผล</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+                <div class="note-box">
+                    <strong>บันทึกเพิ่มเติมจากแพทย์:</strong><br/>
+                    ${note || '-'}
+                </div>
+            </div>
+        </body>
+        </html>`;
     };
 
     const handleAction = async (type) => {
@@ -255,7 +374,7 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                            <Microscope className="text-rose-500" size={24}/> Smart Lab AI
+                            <Microscope className="text-rose-500" size={24}/> Smart Lab AI (Monitor)
                         </h2>
                         <div className="flex items-center gap-2 mt-1">
                             <span className={`w-2 h-2 rounded-full ${isAiRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></span>
@@ -281,39 +400,55 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
                     </div>
                 </div>
 
-                {/* --- ส่วน SOURCE เท่านั้น (ซ่อนช่องกรอก IP ตามที่คุณต้องการ) และปรับชื่อเมนูภาษาไทย --- */}
                 {!isAiRunning && (
                     <div className="flex items-center gap-2 p-3 bg-blue-500/5 rounded-xl border border-blue-500/10">
                         <Camera size={14} className="text-indigo-500"/>
-                        <span className="text-[10px] font-bold uppercase opacity-50">แหล่งที่มาของภาพ:</span>
+                        <span className="text-[10px] font-bold uppercase opacity-50">เลือกช่องทาง Monitor:</span>
                         <select 
                             value={cameraSource} 
                             onChange={e => setCameraSource(e.target.value)}
                             className="bg-transparent text-xs outline-none cursor-pointer font-bold flex-1"
                         >
+                            <option value="device">กล้องมือถือ (DroidCam)</option>
                             <option value="1">กล้องจุลทรรศน์</option>
-                            <option value="device">กล้องจากมือถือ</option>
-                            <option value="0">กล้องจากคอมพิวเตอร์</option>
+                            <option value="0">กล้องคอมพิวเตอร์</option>
                         </select>
                     </div>
                 )}
             </div>
 
-            {/* --- หน้าต่าง Preview กล้องมือถือ --- */}
-            {cameraSource === 'device' && isLocalStreamActive && (
-                <div className="relative w-full max-w-md mx-auto aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-indigo-500/50">
-                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                    <canvas ref={canvasRef} width="640" height="480" className="hidden" />
-                    <div className="absolute top-2 right-2 bg-rose-600 text-white text-[10px] px-2 py-1 rounded-full animate-pulse font-bold">
-                        AI STREAMING ACTIVE
-                    </div>
+            {/* --- หน้าต่าง Preview ผลลัพธ์บนจอคอมพิวเตอร์ --- */}
+                <div className={`relative w-full max-w-2xl mx-auto aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-indigo-500/50 mb-4 ${isLocalStreamActive ? 'block' : 'hidden'}`}>
+                
+                {/* วิดีโอต้นฉบับ (เปลี่ยนจาก hidden เป็น opacity-0 และเพิ่ม absolute z-0) */}
+                <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    muted 
+                    className={`w-full h-full object-cover absolute top-0 left-0 z-0 transition-opacity duration-300 ${aiProcessedImage ? 'opacity-0' : 'opacity-100'}`} 
+                />
+                
+                {/* แสดงภาพที่ AI ประมวลผลและตีกรอบแล้ว (เพิ่ม z-10 ให้อยู่ด้านบน) */}
+                {aiProcessedImage && (
+                    <img 
+                        src={aiProcessedImage} 
+                        alt="AI Detected Cells" 
+                        className="w-full h-full object-cover absolute top-0 left-0 z-10" 
+                    />
+                )}
+                
+                <canvas ref={canvasRef} width="640" height="480" className="hidden" />
+                <div className="absolute top-4 left-4 bg-rose-600 text-white text-[10px] px-3 py-1 rounded-full animate-pulse font-bold z-20">
+                    AI MONITORING ACTIVE
                 </div>
-            )}
+            </div>
 
-            {/* --- Main Content (Logic เดิมครบถ้วน ห้ามตัดออก) --- */}
+            {/* --- Main Content --- */}
             {activeSubTab === 'form' && (
                 <div className="flex flex-col xl:flex-row gap-4 sm:gap-6 animate-fade-in pb-10">
                     <div className={`flex-1 p-4 sm:p-6 rounded-2xl border transition-all ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200 shadow-sm'}`}>
+                        {/* ส่วนฟอร์มข้อมูลผู้ป่วย */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             <div className="w-full">
                                 <label className={`text-xs font-bold block mb-1.5 ${theme === 'dark' ? 'text-teal-400' : 'text-teal-600'}`}>เลือกผู้ป่วยในการดูแล *</label>
@@ -337,6 +472,7 @@ const DoctorSmartLab = ({ theme, patientsList, userProfile }) => {
                             </div>
                         </div>
 
+                        {/* ส่วนตารางผล Lab */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12">
                             <div className="space-y-3">
                                 <h5 className="font-bold text-rose-500 border-b pb-2 text-sm flex items-center gap-2 border-rose-500/20"><Activity size={16}/> RBC Series</h5>
