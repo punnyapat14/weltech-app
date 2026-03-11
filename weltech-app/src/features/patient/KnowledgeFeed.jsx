@@ -4,22 +4,20 @@ import { supabase } from '../../supabaseClient';
 export default function KnowledgeFeed() {
   const [posts, setPosts] = useState([]);
 
-  // ดึงข้อมูลเมื่อโหลดหน้าเว็บ
   useEffect(() => {
     fetchPosts();
   }, []);
 
   const fetchPosts = async () => {
-    // ✅ แก้ไขชื่อตารางจาก 'knowledge_posts' เป็น 'health_articles' ให้ตรงกับฐานข้อมูลจริง
     const { data, error } = await supabase
       .from('health_articles') 
       .select('*')
-      .order('created_at', { ascending: false }); // เรียงจากใหม่ไปเก่า
+      .order('created_at', { ascending: false }); 
 
     if (!error) {
         setPosts(data);
     } else {
-        console.error("Error fetching knowledge:", error.message); // เพิ่มการเช็ค error เพื่อตรวจสอบ
+        console.error("Error fetching knowledge:", error.message); 
     }
   };
 
@@ -42,7 +40,6 @@ export default function KnowledgeFeed() {
               {post.content}
             </p>
 
-            {/* ถ้ามีไฟล์แนบ ให้แสดงปุ่มดาวน์โหลด */}
             {post.file_url && (
               <div className="mt-4">
                 <a 

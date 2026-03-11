@@ -40,24 +40,19 @@
 .read-the-docs {
   color: #888;
 }
-/* แก้ไขสีพื้นหลัง Auto-fill สำหรับโหมดสว่าง (Light Mode) */
 input:-webkit-autofill,
 input:-webkit-autofill:hover, 
 input:-webkit-autofill:focus, 
 input:-webkit-autofill:active {
-    /* เปลี่ยน white เป็นสีพื้นหลัง Input ของคุณ ถ้าคุณใช้สีอื่น */
     -webkit-box-shadow: 0 0 0 30px white inset !important;
     -webkit-text-fill-color: black !important;
     transition: background-color 5000s ease-in-out 0s;
 }
 
-/* แก้ไขสีพื้นหลัง Auto-fill สำหรับโหมดมืด (Dark Mode) */
-/* หมายเหตุ: ระบบต้องมี Class .dark ที่ body หรือ html ถึงจะทำงาน */
 .dark input:-webkit-autofill,
 .dark input:-webkit-autofill:hover, 
 .dark input:-webkit-autofill:focus, 
 .dark input:-webkit-autofill:active {
-    /* เปลี่ยน #1f2937 เป็นสีพื้นหลัง Dark Mode ของคุณ (ค่านี้คือ gray-800 ของ Tailwind) */
     -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important;
     -webkit-text-fill-color: white !important;
 }

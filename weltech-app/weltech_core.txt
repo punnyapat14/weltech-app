@@ -1,0 +1,709 @@
+﻿{
+  "name": "weltech-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "chart.js": "^4.5.1",
+    "jsbarcode": "^3.12.3",
+    "lucide-react": "^0.559.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.22",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "vite": "^7.2.4"
+  }
+}
+from flask import Flask, jsonify, request
+from flask_cors import CORS, cross_origin
+from ultralytics import YOLO
+import cv2
+import os
+import base64
+import numpy as np
+import gc
+
+app = Flask(__name__)
+# à¸­à¸™à¸¸à¸à¸²à¸• CORS à¸›à¹‰à¸­à¸‡à¸à¸±à¸™à¸›à¸±à¸à¸«à¸² Cross-Origin
+CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*"}})
+
+# ================== CONFIG ==================
+# ---------- Detection ----------
+DET_MODEL_PATH = "detect.pt"  # à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸Šà¸·à¹ˆà¸­à¹„à¸Ÿà¸¥à¹Œà¸­à¸¢à¹ˆà¸²à¹ƒà¸«à¹‰à¸¡à¸µà¸Šà¹ˆà¸­à¸‡à¸§à¹ˆà¸²à¸‡
+IMGSZ = 640  # âš ï¸ à¸›à¸£à¸±à¸šà¸¥à¸”à¸ˆà¸²à¸ 1536 à¹€à¸›à¹‡à¸™ 640 à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰à¸£à¸±à¸™à¸šà¸™ Cloud à¸Ÿà¸£à¸µà¹„à¸”à¹‰à¹€à¸£à¹‡à¸§à¹à¸¥à¸°à¹„à¸¡à¹ˆ Timeout
+CONF = 0.5
+IOU = 0.45
+
+# ---------- Classification ----------
+CLS_MODEL_PATH = "class.pt"
+CLS_INPUT_SIZE = 224
+TARGET_CLASS_ID = 2   # à¸ªà¸¡à¸¡à¸•à¸´à¸§à¹ˆà¸² 2 à¸„à¸·à¸­ WBC
+
+# ---------- Crop & Style ----------
+CROP_MARGIN = 0.25    # à¸‚à¸¢à¸²à¸¢à¸à¸£à¸­à¸š 25%
+FONT = cv2.FONT_HERSHEY_DUPLEX
+FONT_SCALE = 0.5
+FONT_THICKNESS = 1
+TEXT_COLOR = (255, 255, 255)
+BG_ALPHA = 0.45
+PADDING_X = 6
+PADDING_Y = 4
+
+CLASS_COLORS = {
+    0: (0, 0, 255),
+    1: (0, 255, 0),
+    2: (255, 0, 0),
+    3: (0, 255, 255),
+}
+DEFAULT_COLOR = (180, 180, 180)
+# ==========================================
+
+print("ðŸš€ Loading AI Models...")
+try:
+    det_model = YOLO(DET_MODEL_PATH)
+    cls_model = YOLO(CLS_MODEL_PATH)
+    print("âœ… Both Models Loaded Successfully")
+except Exception as e:
+    print(f"âŒ Error loading models: {e}")
+
+# ---------- Helper Functions ----------
+def crop_with_margin_and_resize(img, box, margin, out_size):
+    h, w = img.shape[:2]
+    x1, y1, x2, y2 = map(int, box)
+
+    bw = x2 - x1
+    bh = y2 - y1
+
+    mx = int(bw * margin)
+    my = int(bh * margin)
+
+    nx1 = max(0, x1 - mx)
+    ny1 = max(0, y1 - my)
+    nx2 = min(w, x2 + mx)
+    ny2 = min(h, y2 + my)
+
+    crop = img[ny1:ny2, nx1:nx2]
+    if crop.size == 0:
+        return None
+
+    crop_resized = cv2.resize(crop, (out_size, out_size))
+    return crop_resized
+
+def classify_wbc(crop_bgr, cls_model):
+    # à¹‚à¸¡à¹€à¸”à¸¥ Classify à¸¡à¸±à¸à¸ˆà¸°à¹€à¸—à¸£à¸™à¸¡à¸²à¸à¸±à¸šà¸ à¸²à¸ž RGB
+    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+    res = cls_model(crop_rgb, imgsz=CLS_INPUT_SIZE, verbose=False)[0]
+    
+    cls_id = int(res.probs.top1)
+    conf = float(res.probs.top1conf)
+    name = cls_model.names[cls_id]
+    return name, conf
+
+def draw_label(out, overlay, text, x1, y1, color):
+    (tw, th), _ = cv2.getTextSize(text, FONT, FONT_SCALE, FONT_THICKNESS)
+    tx1 = x1
+    ty1 = y1 - th - PADDING_Y * 2
+    tx2 = x1 + tw + PADDING_X * 2
+    ty2 = y1
+
+    if ty1 < 0:
+        ty1 = y1
+        ty2 = y1 + th + PADDING_Y * 2
+
+    cv2.rectangle(overlay, (tx1, ty1), (tx2, ty2), color, -1)
+    cv2.putText(out, text, (tx1 + PADDING_X, ty2 - PADDING_Y),
+                FONT, FONT_SCALE, TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
+
+# ================== API ENDPOINTS ==================
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({"status": "online", "message": "WelTech AI Server (Dual Model) is running"}), 200
+
+@app.route('/process-frame', methods=['POST', 'OPTIONS'])
+@cross_origin()
+def process_frame():
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
+    try:
+        data = request.json
+        image_b64 = data.get('image')
+        if not image_b64:
+            return jsonify({"status": "error", "message": "No image data"}), 400
+
+        # Decode Image
+        encoded_data = image_b64.split(',')[1] if ',' in image_b64 else image_b64
+        nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({"status": "error", "message": "Image Decode Failed"}), 400
+
+        # 1. Detection Phase
+        results = det_model(frame, imgsz=IMGSZ, conf=CONF, iou=IOU, verbose=False)[0]
+        
+        counts = {}          # à¸™à¸±à¸šà¸£à¸§à¸¡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+        wbc_subcounts = {}   # à¸™à¸±à¸šà¹à¸¢à¸à¸Šà¸™à¸´à¸” WBC
+
+        vis = frame.copy()
+        overlay = frame.copy()
+
+        if results.boxes is not None and len(results.boxes) > 0:
+            boxes = results.boxes.xyxy.cpu().numpy()
+            clss = results.boxes.cls.cpu().numpy()
+            confs = results.boxes.conf.cpu().numpy()
+            det_names = det_model.names
+
+            for box, cls, conf in zip(boxes, clss, confs):
+                x1, y1, x2, y2 = map(int, box)
+                cls = int(cls)
+                base_name = det_names[cls]
+                
+                counts[base_name] = counts.get(base_name, 0) + 1
+                color = CLASS_COLORS.get(cls, DEFAULT_COLOR)
+                cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
+                label = f"{base_name} {conf:.2f}"
+
+                # 2. Classification Phase (à¹€à¸‰à¸žà¸²à¸° WBC)
+                if cls == TARGET_CLASS_ID:
+                    crop = crop_with_margin_and_resize(frame, box, CROP_MARGIN, CLS_INPUT_SIZE)
+                    if crop is not None:
+                        wbc_name, wbc_conf = classify_wbc(crop, cls_model)
+                        wbc_subcounts[wbc_name] = wbc_subcounts.get(wbc_name, 0) + 1
+                        
+                        # à¹€à¸žà¸´à¹ˆà¸¡à¸Šà¸·à¹ˆà¸­à¸Šà¸™à¸´à¸”à¸¢à¹ˆà¸­à¸¢à¸¥à¸‡à¹ƒà¸™ Label à¹à¸¥à¸°à¸•à¸²à¸£à¸²à¸‡à¸™à¸±à¸šà¸£à¸§à¸¡
+                        label += f" | {wbc_name} {wbc_conf:.2f}"
+                        counts[wbc_name] = counts.get(wbc_name, 0) + 1
+
+                # à¸§à¸²à¸” Label
+                draw_label(vis, overlay, label, x1, y1, color)
+
+        # à¸£à¸§à¸¡ Layer à¸ªà¸µà¹ƒà¸ª (Alpha)
+        cv2.addWeighted(overlay, BG_ALPHA, vis, 1 - BG_ALPHA, 0, vis)
+
+        # Encode à¸à¸¥à¸±à¸šà¹€à¸›à¹‡à¸™ Base64
+        _, buffer = cv2.imencode('.jpg', vis, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        processed_b64 = base64.b64encode(buffer).decode('utf-8')
+        final_processed_image = f"data:image/jpeg;base64,{processed_b64}"
+
+        return jsonify({
+            "status": "success",
+            "counts": counts,
+            "wbc_details": wbc_subcounts,
+            "total": len(results.boxes) if results.boxes is not None else 0,
+            "processed_image": final_processed_image
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+        
+    finally:
+        gc.collect()
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 7860))
+    app.run(host='0.0.0.0', port=port)
+# à¹ƒà¸Šà¹‰ Python 3.9 à¹€à¸›à¹‡à¸™à¸žà¸·à¹‰à¸™à¸à¸²à¸™
+FROM python:3.9-slim
+
+# à¸ªà¸£à¹‰à¸²à¸‡ User à¹ƒà¸«à¸¡à¹ˆà¹€à¸žà¸·à¹ˆà¸­à¸„à¸§à¸²à¸¡à¸›à¸¥à¸­à¸”à¸ à¸±à¸¢à¸•à¸²à¸¡à¸à¸Žà¸‚à¸­à¸‡ Hugging Face
+RUN useradd -m -u 1000 user
+USER user
+ENV PATH="/home/user/.local/bin:$PATH"
+
+# à¸à¸³à¸«à¸™à¸”à¹‚à¸Ÿà¸¥à¹€à¸”à¸­à¸£à¹Œà¸—à¸³à¸‡à¸²à¸™
+WORKDIR /app
+
+# à¸„à¸±à¸”à¸¥à¸­à¸à¹„à¸Ÿà¸¥à¹Œ requirements à¹à¸¥à¸°à¸•à¸´à¸”à¸•à¸±à¹‰à¸‡à¹à¸žà¹‡à¸à¹€à¸à¸ˆ
+COPY --chown=user requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# à¸„à¸±à¸”à¸¥à¸­à¸à¹„à¸Ÿà¸¥à¹Œà¸—à¸±à¹‰à¸‡à¸«à¸¡à¸” (server.py, best.pt) à¹€à¸‚à¹‰à¸²à¹„à¸›à¹ƒà¸™ Docker
+COPY --chown=user . .
+
+# à¹€à¸›à¸´à¸” Port 7860 (Hugging Face à¸šà¸±à¸‡à¸„à¸±à¸šà¹ƒà¸Šà¹‰ Port à¸™à¸µà¹‰)
+EXPOSE 7860
+
+# à¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸£à¸±à¸™ Flask à¸œà¹ˆà¸²à¸™ Gunicorn à¹‚à¸”à¸¢à¸Šà¸µà¹‰à¹„à¸›à¸—à¸µà¹ˆ Port 7860 (à¹à¸à¹‰à¹€à¸›à¹‡à¸™ server:app)
+CMD ["gunicorn", "-b", "0.0.0.0:7860", "server:app", "--timeout", "120", "--workers", "1", "--threads", "2"]
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './supabaseClient'; 
+import { Loader } from 'lucide-react';
+
+// --- Assets ---
+import kmutnbLogo from './assets/kmutnb.png';
+import projectLogo from './assets/logo.png';
+
+// --- Components & Features ---
+import WelcomePage from './WelcomePage'; 
+import GlobalStyles from './components/GlobalStyles';
+import { Sidebar, Header } from './components/Layout';
+
+import AuthPage from './features/auth/AuthPage'; 
+import PatientHome from './features/patient/PatientHome'; 
+import ProfileView from './features/profile/ProfileView'; 
+import PatientHistory from './features/history/PatientHistory'; 
+import ConsultSection from './features/chat/ConsultSection'; 
+import DoctorDashboard from './features/doctor/DoctorDashboard'; 
+import DoctorSmartLab from './features/doctor/DoctorSmartLab'; 
+import AdminDashboard from './features/admin/AdminDashboard'; 
+import AdminAccountTable from './features/admin/AdminAccountTable'; 
+// ðŸŸ¢ à¹€à¸žà¸´à¹ˆà¸¡à¸à¸²à¸£ Import PasswordRequestTable
+import PasswordRequestTable from './features/admin/PasswordRequestTable'; 
+import AllPatientsView from './features/doctor/AllPatientsView';
+import MyPatientsView from './features/doctor/MyPatientsView';
+import DoctorHealthTips from "./features/doctoradmin/DoctorHealthTips";
+import KnowledgeFeed from './features/patient/KnowledgeFeed'; 
+
+import { Chart as ChartJS } from 'chart.js';
+ChartJS.defaults.font.family = 'Prompt'; 
+
+const App = () => {
+Â  // --- 1. State Management ---
+Â  const [showWelcome, setShowWelcome] = useState(localStorage.getItem('hasEnteredApp') !== 'true');
+Â  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+Â  
+Â  const [session, setSession] = useState(null);
+Â  const [userProfile, setUserProfile] = useState(null);
+Â  const [profileLoading, setProfileLoading] = useState(true);
+Â  
+Â  const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home');
+Â  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+Â  const [hasUnreadMsg, setHasUnreadMsg] = useState(false);
+Â  
+Â  const [patientsList, setPatientsList] = useState([]); 
+Â  const [appointments, setAppointments] = useState([]); 
+Â  const [treatmentHistory, setTreatmentHistory] = useState([]); 
+Â  const [thaiAddressDB, setThaiAddressDB] = useState([]);
+Â  const [selectedChatPatientId, setSelectedChatPatientId] = useState(null);
+
+Â  const notificationAudio = useRef(null);
+Â  const currentUserIdRef = useRef(null);
+Â  const isRegisteringRef = useRef(false);
+
+Â  useEffect(() => {
+Â  Â  localStorage.setItem('activeTab', activeTab);
+Â  }, [activeTab]);
+
+Â  useEffect(() => {
+Â  Â  localStorage.setItem('theme', theme);
+Â  }, [theme]);
+
+Â  // --- 2. Initial Data Loading ---
+Â  useEffect(() => {
+Â  Â  notificationAudio.current = new Audio('/alert.mp3');
+Â  Â  const fetchAddr = async () => {
+Â  Â  Â  Â  try {
+Â  Â  Â  Â  Â  Â  const res = await fetch('/thai_address.json'); 
+Â  Â  Â  Â  Â  Â  const raw = await res.json();
+Â  Â  Â  Â  Â  Â  setThaiAddressDB(raw); 
+Â  Â  Â  Â  } catch(e) { console.error("Error loading address:", e); }
+Â  Â  };
+Â  Â  fetchAddr();
+
+Â  Â  // ðŸŸ¢ 2.1 à¹€à¸žà¸´à¹ˆà¸¡à¸£à¸°à¸šà¸š Real-time Listen à¸ªà¸³à¸«à¸£à¸±à¸šà¸„à¸³à¸£à¹‰à¸­à¸‡à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™ (à¸–à¹‰à¸²à¸¡à¸µà¸à¸²à¸£à¸­à¸±à¸›à¹€à¸”à¸•à¸ˆà¸°à¹ƒà¸«à¹‰à¸œà¸¹à¹‰à¹ƒà¸Šà¹‰à¸£à¸±à¸šà¸£à¸¹à¹‰à¸—à¸±à¸™à¸—à¸µ)
+Â  Â  const passwordChannel = supabase
+Â  Â  Â  .channel('public:password_requests')
+Â  Â  Â  .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'password_requests' }, payload => {
+Â  Â  Â  Â  Â  if (payload.new.admin_response && notificationAudio.current) {
+Â  Â  Â  Â  Â  Â  Â  notificationAudio.current.play().catch(e => {});
+Â  Â  Â  Â  Â  }
+Â  Â  Â  })
+Â  Â  Â  .subscribe();
+
+Â  Â  return () => {
+Â  Â  Â  supabase.removeChannel(passwordChannel);
+Â  Â  };
+Â  }, []);
+
+Â  useEffect(() => { 
+Â  Â  Â  if (userProfile?.role) {
+Â  Â  Â  Â  Â  document.body.setAttribute('data-role', userProfile.role); 
+Â  Â  Â  } else {
+Â  Â  Â  Â  Â  document.body.removeAttribute('data-role');
+Â  Â  Â  }
+Â  }, [userProfile?.role]);
+
+Â  // --- 3. Auth & Profile Logic ---
+Â  const fetchProfile = async (userId) => { 
+Â  Â  if (isRegisteringRef.current) return;
+Â  Â  setProfileLoading(true);
+Â  Â  try {
+Â  Â  Â  Â  const { data: basicProfile, error: fetchError } = await supabase
+Â  Â  Â  Â  Â  Â  .from('profiles')
+Â  Â  Â  Â  Â  Â  .select('*') 
+Â  Â  Â  Â  Â  Â  .eq('id', userId)
+Â  Â  Â  Â  Â  Â  .maybeSingle();
+
+Â  Â  Â  Â  if (fetchError) throw fetchError;
+
+Â  Â  Â  Â  if (basicProfile) { 
+Â  Â  Â  Â  Â  Â  let fullProfile = { ...basicProfile }; 
+
+Â  Â  Â  Â  Â  Â  if (basicProfile.role === 'patient') {
+Â  Â  Â  Â  Â  Â  Â  Â  Â const { data: patientData } = await supabase.from('patients').select('*').eq('user_id', userId).maybeSingle();
+Â  Â  Â  Â  Â  Â  Â  Â  Â 
+Â  Â  Â  Â  Â  Â  Â  Â  Â if(patientData) {
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â const validPatientData = Object.fromEntries(
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â Object.entries(patientData).filter(([_, v]) => v !== null && v !== '')
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â );
+
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â fullProfile = { 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â ...fullProfile, 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â ...validPatientData 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â };
+Â  Â  Â  Â  Â  Â  Â  Â  Â }
+Â  Â  Â  Â  Â  Â  Â  Â  Â 
+Â  Â  Â  Â  Â  Â  Â  Â  Â const { data: historyData } = await supabase.from('treatment_history').select('*').eq('patient_id', userId).order('date', { ascending: false });
+Â  Â  Â  Â  Â  Â  Â  Â  Â setTreatmentHistory(historyData || []);
+Â  Â  Â  Â  Â  Â  } else if (basicProfile.role === 'doctor') {
+Â  Â  Â  Â  Â  Â  Â  Â  Â const { data: doctorData } = await supabase.from('doctors').select('*').eq('user_id', userId).maybeSingle();
+Â  Â  Â  Â  Â  Â  Â  Â  Â if(doctorData) fullProfile = { ...fullProfile, ...doctorData };
+Â  Â  Â  Â  Â  Â  } else if (basicProfile.role === 'admin') {
+Â  Â  Â  Â  Â  Â  Â  Â  Â const { data: adminData } = await supabase.from('admins').select('*').eq('user_id', userId).maybeSingle();
+Â  Â  Â  Â  Â  Â  Â  Â  Â if(adminData) fullProfile = { ...fullProfile, ...adminData };
+Â  Â  Â  Â  Â  Â  }
+Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  fullProfile.id = basicProfile.id;
+Â  Â  Â  Â  Â  Â  fullProfile.user_id = basicProfile.id;
+Â  Â  Â  Â  Â  Â  fullProfile.contact_email = basicProfile.contact_email || "";
+
+Â  Â  Â  Â  Â  Â  setUserProfile(fullProfile); 
+Â  Â  Â  Â  } else {
+Â  Â  Â  Â  Â  Â  await supabase.auth.signOut();
+Â  Â  Â  Â  }
+Â  Â  } catch (err) {
+Â  Â  Â  Â  console.error("Fetch Profile Error:", err);
+Â  Â  } finally {
+Â  Â  Â  Â  setProfileLoading(false);
+Â  Â  }
+Â  };
+
+Â  const handleSaveHealthData = async (userId, cleanedData, imageFile) => {
+Â  Â  try {
+Â  Â  Â  Â  setProfileLoading(true);
+Â  Â  Â  Â  let avatarUrl = userProfile.avatar_url;
+
+Â  Â  Â  Â  if (imageFile) {
+Â  Â  Â  Â  Â  Â  const fileExt = imageFile.name.split('.').pop();
+Â  Â  Â  Â  Â  Â  const fileName = `${userId}-${Date.now()}.${fileExt}`; 
+Â  Â  Â  Â  Â  Â  const filePath = `avatars/${fileName}`;
+
+Â  Â  Â  Â  Â  Â  const { error: uploadError } = await supabase.storage
+Â  Â  Â  Â  Â  Â  Â  Â  .from('avatars')
+Â  Â  Â  Â  Â  Â  Â  Â  .upload(filePath, imageFile);
+
+Â  Â  Â  Â  Â  Â  if (uploadError) throw uploadError;
+
+Â  Â  Â  Â  Â  Â  const { data: { publicUrl } } = supabase.storage
+Â  Â  Â  Â  Â  Â  Â  Â  .from('avatars')
+Â  Â  Â  Â  Â  Â  Â  Â  .getPublicUrl(filePath);
+Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  avatarUrl = publicUrl;
+Â  Â  Â  Â  }
+
+Â  Â  Â  Â  const { error: profileError = null } = await supabase
+Â  Â  Â  Â  Â  Â  .from('profiles')
+Â  Â  Â  Â  Â  Â  .update({ 
+Â  Â  Â  Â  Â  Â  Â  Â  ...cleanedData, 
+Â  Â  Â  Â  Â  Â  Â  Â  avatar_url: avatarUrl,
+Â  Â  Â  Â  Â  Â  Â  Â  updated_at: new Date().toISOString() 
+Â  Â  Â  Â  Â  Â  })
+Â  Â  Â  Â  Â  Â  .eq('id', userId);
+
+Â  Â  Â  Â  if (profileError) throw profileError;
+
+Â  Â  Â  Â  if (userProfile.role === 'patient') {
+Â  Â  Â  Â  Â  Â  const patientFields = {
+Â  Â  Â  Â  Â  Â  Â  Â  weight: cleanedData.weight,
+Â  Â  Â  Â  Â  Â  Â  Â  height: cleanedData.height,
+Â  Â  Â  Â  Â  Â  Â  Â  blood_group: cleanedData.blood_group,
+Â  Â  Â  Â  Â  Â  Â  Â  disease: cleanedData.disease,
+Â  Â  Â  Â  Â  Â  Â  Â  allergy: cleanedData.allergy,
+Â  Â  Â  Â  Â  Â  Â  Â  food_allergies: cleanedData.food_allergies,
+Â  Â  Â  Â  Â  Â  Â  Â  current_medication: cleanedData.current_medication,
+Â  Â  Â  Â  Â  Â  Â  Â  surgical_history: cleanedData.surgical_history,
+Â  Â  Â  Â  Â  Â  Â  Â  emergency_contact_name: cleanedData.emergency_contact_name,
+Â  Â  Â  Â  Â  Â  Â  Â  emergency_contact_phone: cleanedData.emergency_contact_phone,
+Â  Â  Â  Â  Â  Â  Â  Â  emergency_relationship: cleanedData.emergency_relationship
+Â  Â  Â  Â  Â  Â  };
+
+Â  Â  Â  Â  Â  Â  const cleanedPatientData = Object.fromEntries(
+Â  Â  Â  Â  Â  Â  Â  Â  Object.entries(patientFields).filter(([_, v]) => v !== undefined)
+Â  Â  Â  Â  Â  Â  );
+
+Â  Â  Â  Â  Â  Â  if (Object.keys(cleanedPatientData).length > 0) {
+Â  Â  Â  Â  Â  Â  Â  Â  const { error: patientError } = await supabase
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  .from('patients')
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  .update(cleanedPatientData)
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  .eq('user_id', userId);
+Â  Â  Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  Â  Â  if (patientError) throw patientError;
+Â  Â  Â  Â  Â  Â  }
+Â  Â  Â  Â  }
+
+Â  Â  Â  Â  await fetchProfile(userId); 
+Â  Â  Â  Â  if (userProfile.role === 'doctor') {
+Â  Â  Â  Â  Â  Â  await fetchPatientsForDoctor();
+Â  Â  Â  Â  }
+Â  Â  Â  Â  
+Â  Â  Â  Â  alert("à¸šà¸±à¸™à¸—à¸¶à¸à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸£à¸µà¸¢à¸šà¸£à¹‰à¸­à¸¢à¹à¸¥à¹‰à¸§");
+
+Â  Â  } catch (error) {
+Â  Â  Â  Â  console.error("Save Error:", error);
+Â  Â  Â  Â  alert("à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¹ƒà¸™à¸à¸²à¸£à¸šà¸±à¸™à¸—à¸¶à¸: " + error.message);
+Â  Â  } finally {
+Â  Â  Â  Â  setProfileLoading(false);
+Â  Â  }
+Â  };
+
+Â  useEffect(() => {
+Â  Â  Â  const initAuth = async () => {
+Â  Â  Â  Â  Â  const { data: { session } } = await supabase.auth.getSession();
+Â  Â  Â  Â  Â  setSession(session);
+Â  Â  Â  Â  Â  if (session) {
+Â  Â  Â  Â  Â  Â  Â  setShowWelcome(false); 
+Â  Â  Â  Â  Â  Â  Â  localStorage.setItem('hasEnteredApp', 'true');
+Â  Â  Â  Â  Â  Â  Â  currentUserIdRef.current = session.user.id;
+Â  Â  Â  Â  Â  Â  Â  await fetchProfile(session.user.id);
+Â  Â  Â  Â  Â  } else {
+Â  Â  Â  Â  Â  Â  Â  setProfileLoading(false);
+Â  Â  Â  Â  Â  }
+Â  Â  Â  };
+Â  Â  Â  initAuth();
+
+Â  Â  Â  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+Â  Â  Â  Â  Â  if (isRegisteringRef.current) return; 
+Â  Â  Â  Â  Â  setSession(session);
+Â  Â  Â  Â  Â  if (session) {
+Â  Â  Â  Â  Â  Â  setShowWelcome(false); 
+Â  Â  Â  Â  Â  Â  localStorage.setItem('hasEnteredApp', 'true');
+Â  Â  Â  Â  Â  Â  if (currentUserIdRef.current !== session.user.id) {
+Â  Â  Â  Â  Â  Â  Â  Â  Â  currentUserIdRef.current = session.user.id; 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  fetchProfile(session.user.id); Â  
+Â  Â  Â  Â  Â  Â  Â  }
+Â  Â  Â  Â  Â  } else {
+Â  Â  Â  Â  Â  Â  Â  currentUserIdRef.current = null;
+Â  Â  Â  Â  Â  Â  Â  setUserProfile(null);
+Â  Â  Â  Â  Â  Â  Â  setProfileLoading(false); 
+Â  Â  Â  Â  Â  Â  Â  setActiveTab('home'); 
+Â  Â  Â  Â  Â  Â  Â  localStorage.removeItem('activeTab');
+Â  Â  Â  Â  Â  Â  Â  localStorage.removeItem('hasEnteredApp');
+Â  Â  Â  Â  Â  }
+Â  Â  Â  });
+Â  Â  Â  return () => subscription.unsubscribe();
+Â  }, []);
+
+Â  const handleEnterApp = () => {
+Â  Â  setShowWelcome(false);
+Â  Â  localStorage.setItem('hasEnteredApp', 'true');
+Â  };
+
+Â  // --- 4. Data Fetching Helpers ---
+Â  const fetchPatientsForDoctor = async () => {
+Â  Â  try {
+Â  Â  Â  Â  const { data: profiles, error: pError } = await supabase
+Â  Â  Â  Â  Â  .from('profiles')
+Â  Â  Â  Â  Â  .select('*')
+Â  Â  Â  Â  Â  .eq('role', 'patient');
+Â  Â  Â  Â  Â  
+Â  Â  Â  Â  const { data: patientsData, error: pdError } = await supabase
+Â  Â  Â  Â  Â  .from('patients')
+Â  Â  Â  Â  Â  .select('*');
+
+Â  Â  Â  Â  if (pError || pdError) throw pError || pdError;
+
+Â  Â  Â  Â  if (profiles) {
+Â  Â  Â  Â  Â  Â  const formattedPatients = profiles.map(p => {
+Â  Â  Â  Â  Â  Â  Â  Â  const pData = patientsData?.find(pd => String(pd.user_id) === String(p.id));
+Â  Â  Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  Â  Â  return { 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  ...p,
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  user_id: p.id,
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  doctor_id: pData?.doctor_id || null, 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  name: `${p.title_th || ''}${p.first_name_th || ''} ${p.last_name_th || ''}`,
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  hn: pData?.hn_number || '-',
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  treatment_status: pData?.treatment_status || 'waiting_exam' 
+Â  Â  Â  Â  Â  Â  Â  Â  };
+Â  Â  Â  Â  Â  Â  });
+Â  Â  Â  Â  Â  Â  setPatientsList(formattedPatients);
+Â  Â  Â  Â  }
+Â  Â  } catch (err) { 
+Â  Â  Â  Â  console.error("Error fetching patients:", err); 
+Â  Â  }
+Â  };
+
+Â  const fetchAppointments = async () => {
+Â  Â  Â  const { data } = await supabase.from('appointments').select('*').order('date', { ascending: true }).order('time', { ascending: true });
+Â  Â  Â  if (data) setAppointments(data);
+Â  };
+
+Â  useEffect(() => {
+Â  Â  Â  if (userProfile?.role === 'doctor') {
+Â  Â  Â  Â  Â  fetchPatientsForDoctor();
+Â  Â  Â  Â  Â  fetchAppointments();
+Â  Â  Â  } else if (userProfile?.role === 'patient') {
+Â  Â  Â  Â  Â  fetchAppointments();
+Â  Â  Â  }
+Â  }, [userProfile]);
+
+Â  const handleTabChange = (tabId) => {
+Â  Â  Â  setActiveTab(tabId);
+Â  Â  Â  if (tabId === 'consult') setHasUnreadMsg(false);
+Â  Â  Â  if (userProfile?.role === 'doctor' && (tabId === 'smart_lab' || tabId === 'home')) {
+Â  Â  Â  Â  Â  fetchPatientsForDoctor();
+Â  Â  Â  Â  Â  fetchAppointments();
+Â  Â  Â  }
+Â  };
+
+Â  // --- 5. Render Logic ---
+Â  if (profileLoading) {
+Â  Â  return (
+Â  Â  Â  <div className={`w-screen h-screen flex flex-col items-center justify-center transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'}`}>
+Â  Â  Â  Â  Â <Loader className="animate-spin mb-4" size={48} color="#f43f5e" />
+Â  Â  Â  Â  Â <p className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>à¸à¸³à¸¥à¸±à¸‡à¸”à¸¶à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹€à¸‹à¸ªà¸Šà¸±à¸™à¸¥à¹ˆà¸²à¸ªà¸¸à¸”...</p>
+Â  Â  Â  </div>
+Â  Â  );
+Â  }
+
+Â  if (showWelcome && !session) return <WelcomePage onEnter={handleEnterApp} />;
+
+Â  if (!session || !userProfile) {
+Â  Â  Â  return (
+Â  Â  Â  Â  <>
+Â  Â  Â  Â  Â  Â  <GlobalStyles />
+Â  Â  Â  Â  Â  Â  <AuthPage 
+Â  Â  Â  Â  Â  Â  Â  Â  theme={theme} setTheme={setTheme} 
+Â  Â  Â  Â  Â  Â  Â  Â  onLoginSuccess={(id) => {
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  handleEnterApp(); 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  fetchProfile(id);
+Â  Â  Â  Â  Â  Â  Â  Â  }}
+Â  Â  Â  Â  Â  Â  Â  Â  kmutnbLogo={kmutnbLogo} logoImg={projectLogo}
+Â  Â  Â  Â  Â  Â  Â  Â  setIsRegistering={(val) => { isRegisteringRef.current = val; }} 
+Â  Â  Â  Â  Â  Â  />
+Â  Â  Â  Â  </>
+Â  Â  Â  );
+Â  }
+
+Â  return (
+Â  Â  <>
+Â  Â  Â  <GlobalStyles />
+Â  Â  Â  <div className={`w-screen h-screen font-sans transition-colors duration-300 flex overflow-hidden ${theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-white text-gray-800'}`}>
+Â  Â  Â  Â  
+Â  Â  Â  Â  <Sidebar 
+Â  Â  Â  Â  Â  Â  isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen}
+Â  Â  Â  Â  Â  Â  theme={theme} setTheme={setTheme}
+Â  Â  Â  Â  Â  Â  userProfile={userProfile} 
+Â  Â  Â  Â  Â  Â  activeTab={activeTab} handleTabChange={handleTabChange}
+Â  Â  Â  Â  Â  Â  hasUnreadMsg={hasUnreadMsg}
+Â  Â  Â  Â  Â  Â  onSignOut={() => {
+Â  Â  Â  Â  Â  Â  Â  Â  localStorage.removeItem('activeTab');
+Â  Â  Â  Â  Â  Â  Â  Â  localStorage.removeItem('hasEnteredApp');
+Â  Â  Â  Â  Â  Â  Â  Â  supabase.auth.signOut();
+Â  Â  Â  Â  Â  Â  }}
+Â  Â  Â  Â  />
+
+Â  Â  Â  Â  <main className={`flex-1 flex flex-col h-full relative transition-all duration-300 ${isSidebarOpen ? 'ml-0 md:ml-64' : 'ml-0'}`}>
+Â  Â  Â  Â  Â  Â  <div className={`p-4 md:p-8 pb-4 sticky top-0 z-10 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'}`}>
+Â  Â  Â  Â  Â  Â  Â  <Header theme={theme} userProfile={userProfile} setIsSidebarOpen={setIsSidebarOpen} />
+Â  Â  Â  Â  Â  Â  </div>
+
+Â  Â  Â  Â  Â  Â  <div className={`flex-1 p-4 md:p-8 pt-0 overflow-y-auto custom-scroll transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'}`}>
+Â  Â  Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  Â  Â  <div key={activeTab} className="animate-fade-in">
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {/* --- Patient Role --- */}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {userProfile.role === 'patient' && (
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  <>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'home' && <PatientHome theme={theme} userProfile={userProfile} appointments={appointments} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'profile' && <ProfileView data={userProfile} addressDB={thaiAddressDB} theme={theme} onSaveHealthData={handleSaveHealthData} treatmentHistory={treatmentHistory} />} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'history' && <PatientHistory theme={theme} treatmentHistory={treatmentHistory} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'consult' && <ConsultSection theme={theme} userProfile={userProfile} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'knowledge' && <KnowledgeFeed theme={theme} userProfile={userProfile} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  </>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  )}
+
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {/* --- Doctor Role --- */}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {userProfile.role === 'doctor' && (
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  <>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'home' && (
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  <DoctorDashboard 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  userProfile={userProfile} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  patientsList={patientsList} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  appointments={appointments} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  fetchAppointments={fetchAppointments} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  fetchPatients={fetchPatientsForDoctor} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  theme={theme} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  />
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  )}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'smart_lab' && <DoctorSmartLab theme={theme} patientsList={patientsList} userProfile={userProfile} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'profile' && <ProfileView data={userProfile} addressDB={thaiAddressDB} theme={theme} onSaveHealthData={handleSaveHealthData} />} 
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'patients_all' && <AllPatientsView patientsList={patientsList} theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'patients_my' && <MyPatientsView patientsList={patientsList} userProfile={userProfile} theme={theme} fetchPatients={fetchPatientsForDoctor} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'consult' && <ConsultSection theme={theme} userProfile={userProfile} patientsList={patientsList} targetPatientId={selectedChatPatientId} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'knowledge' && <DoctorHealthTips userProfile={userProfile} theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  </>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  )}
+
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {/* --- Admin Role --- */}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {userProfile.role === 'admin' && (
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  <>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'home' && <AdminDashboard theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'patients_info' && <AdminAccountTable roleType="patient" title="à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸šà¸±à¸à¸Šà¸µà¸œà¸¹à¹‰à¸›à¹ˆà¸§à¸¢" theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'doctors_info' && <AdminAccountTable roleType="doctor" title="à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸šà¸±à¸à¸Šà¸µà¹à¸žà¸—à¸¢à¹Œ" theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'admins_info' && <AdminAccountTable roleType="admin" title="à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸šà¸±à¸à¸Šà¸µà¹à¸­à¸”à¸¡à¸´à¸™" theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'profile' && <ProfileView data={userProfile} addressDB={thaiAddressDB} theme={theme} onSaveHealthData={handleSaveHealthData} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'knowledge' && <DoctorHealthTips userProfile={userProfile} theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {/* ðŸŸ¢ à¹€à¸žà¸´à¹ˆà¸¡à¹€à¸‡à¸·à¹ˆà¸­à¸™à¹„à¸‚à¸ªà¸³à¸«à¸£à¸±à¸šà¹à¸ªà¸”à¸‡à¸œà¸¥à¸«à¸™à¹‰à¸²à¸„à¸³à¸£à¹‰à¸­à¸‡à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™ */}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  {activeTab === 'password_requests' && <PasswordRequestTable theme={theme} />}
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  </>
+Â  Â  Â  Â  Â  Â  Â  Â  Â  Â  )}
+
+Â  Â  Â  Â  Â  Â  Â  Â  </div> 
+Â  Â  Â  Â  Â  Â  </div>
+Â  Â  Â  Â  </main>
+Â  Â  Â  </div>
+Â  Â  </>
+Â  );
+};
+
+export default App;
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// à¸•à¹‰à¸­à¸‡à¸¡à¸µà¸„à¸³à¸§à¹ˆà¸² export à¸™à¸³à¸«à¸™à¹‰à¸² à¹€à¸žà¸·à¹ˆà¸­à¹ƒà¸«à¹‰à¹„à¸Ÿà¸¥à¹Œà¸­à¸·à¹ˆà¸™ (à¹€à¸Šà¹ˆà¸™ AuthPage) à¸”à¸¶à¸‡à¹„à¸›à¹ƒà¸Šà¹‰à¹„à¸”à¹‰
+export const supabase = createClient(supabaseUrl, supabaseKey);

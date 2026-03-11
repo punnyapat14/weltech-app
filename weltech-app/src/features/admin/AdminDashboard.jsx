@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient'; // ปรับ path ตามโครงสร้างจริง
+import { supabase } from '../../supabaseClient'; 
 import { Users, User, Stethoscope, Shield } from 'lucide-react';
 
 const AdminDashboard = ({ theme }) => {
@@ -31,10 +31,8 @@ const AdminDashboard = ({ theme }) => {
     const { total, patient, doctor, admin } = stats;
     if (total === 0) return { background: 'conic-gradient(#e2e8f0 0% 100%)' };
     
-    // คำนวณองศาสำหรับแต่ละส่วน
     const pDeg = (patient / total) * 360;
     const dDeg = (doctor / total) * 360;
-    // สี: Patient(เขียว), Doctor(ฟ้า), Admin(ม่วง)
     return {
       background: `conic-gradient(
         #10b981 0deg ${pDeg}deg, 
@@ -57,16 +55,13 @@ const AdminDashboard = ({ theme }) => {
 
   return (
     <div className="h-full flex flex-col gap-6">
-      {/* Header */}
       <div>
         <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Dashboard ภาพรวมระบบ</h2>
         <p className="text-gray-400 text-sm">สถิติผู้ใช้งานทั้งหมดในระบบ Hospital Platform</p>
       </div>
 
-      {/* Main Layout: Flex Row (Left = Cards, Right = Chart) */}
       <div className="flex flex-col lg:flex-row gap-6 items-start h-full">
         
-        {/* --- ฝั่งซ้าย: Cards Grid (Total, Patient, Doctor, Admin) --- */}
         <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
             <StatCard title="บัญชีทั้งหมด" count={stats.total} icon={Users} colorClass={theme === 'dark' ? 'bg-slate-700 text-gray-300' : 'bg-gray-100 text-gray-600'} />
             <StatCard title="ผู้ป่วย (Patient)" count={stats.patient} icon={User} colorClass="bg-emerald-100 text-emerald-600" />
@@ -74,7 +69,6 @@ const AdminDashboard = ({ theme }) => {
             <StatCard title="แอดมิน (Admin)" count={stats.admin} icon={Shield} colorClass="bg-purple-100 text-purple-600" />
         </div>
 
-        {/* --- ฝั่งขวา: Pie Chart --- */}
         <div className={`w-full lg:w-[35%] p-6 rounded-2xl border flex flex-col items-center justify-center shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
             <h3 className={`font-bold mb-6 text-lg self-start ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>สัดส่วนบัญชี</h3>
             
@@ -85,7 +79,6 @@ const AdminDashboard = ({ theme }) => {
                </div>
             </div>
 
-            {/* Legend */}
             <div className="mt-8 w-full space-y-3 px-2">
                 <div className="flex justify-between items-center text-sm">
                     <div className="flex items-center gap-3"><span className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm"></span><span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>ผู้ป่วย</span></div>

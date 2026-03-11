@@ -95,27 +95,22 @@ const GlobalStyles = () => {
       margin: 20px; 
     }
 
-/* --- เพิ่มต่อท้ายใน fontStyle.innerHTML --- */
-
-/* Animation: Fade In Up (จางและเลื่อนขึ้น) */
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(20px); /* เริ่มต้นจากด้านล่าง 20px */
+    transform: translateY(20px); 
   }
   to {
     opacity: 1;
-    transform: translateY(0); /* กลับมาตำแหน่งปกติ */
+    transform: translateY(0); 
   }
 }
 
-/* Class สำหรับเรียกใช้งาน */
 .animate-fade-in {
   animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  will-change: transform, opacity; /* ช่วยให้ Browser เรนเดอร์ได้ลื่นขึ้น */
-}
+  will-change: transform, opacity; 
 
-/* เพิ่มเติม: เอฟเฟคสำหรับลูกเล่นการเปลี่ยนผ่าน (Transition) ของสีพื้นหลัง */
+
 .content-transition {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
@@ -212,7 +207,7 @@ const GlobalStyles = () => {
       }
       .btn:hover { background: var(--theme-primary-hover); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
 
-      /* TOGGLE SLIDER */
+    
       .toggle-box { position: absolute; width: 100%; height: 100%; pointer-events: none; }
       .toggle-box::before {
         content: ''; position: absolute; left: -250%; width: 300%; height: 100%;
@@ -234,7 +229,7 @@ const GlobalStyles = () => {
       .toggle-panel .btn { width: 140px; height: 40px; background: transparent; border: 2px solid #fff; box-shadow: none; margin-top: 5px; }
       .toggle-panel .btn:hover { background: rgba(255,255,255,0.2); transform: none; }
 
-      /* THEME SWITCH */
+    
       .theme-switch {
         position: fixed; bottom: 25px; right: 25px; width: 80px; height: 40px; 
         border-radius: 40px; background: var(--toggle-bg-light); border: 2px solid #cbd5e1;
@@ -251,7 +246,7 @@ const GlobalStyles = () => {
       .theme-switch.light .theme-knob { transform: translateX(0); background: #fb923c; }
       .theme-switch.dark .theme-knob { transform: translateX(38px); background: #6366f1; }
 
-      /* UTILS */
+      
       .custom-scroll::-webkit-scrollbar { width: 5px; }
       .custom-scroll::-webkit-scrollbar-track { background: transparent; }
       .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -273,11 +268,10 @@ const GlobalStyles = () => {
     `;
     document.head.appendChild(fontStyle);
     return () => {
-      // document.head.removeChild(fontStyle); // Optional: cleanup
     };
   }, []);
 
-  return null; // Component นี้ไม่ render อะไรออกมา
+  return null; 
 };
 
 export default GlobalStyles;

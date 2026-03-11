@@ -165,55 +165,51 @@ const DoctorDashboard = ({ userProfile, patientsList = [], appointments = [], fe
         setShowModal(true);
     };
 
-    // ... (โค้ดส่วนบนคงเดิม)
+const handleSaveAppointment = async (e) => {
+ e.preventDefault();
+ try {
+ const creatorId = userProfile?.id;
+ if (!creatorId) {
+return alert("ไม่พบข้อมูลรหัสผู้ใช้ (Profile ID) ของท่าน กรุณาลอง Refresh หน้าเว็บหรือเข้าสู่ระบบใหม่");
+ }
 
-    const handleSaveAppointment = async (e) => {
-        e.preventDefault();
-        try {
+ if (!newAppt.patient_id || !newAppt.time || !newAppt.date || !newAppt.location) {
+ return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+ }
 
-            const creatorId = userProfile?.id;
+ const doctorName = `${userProfile?.title_th || ''} ${userProfile?.first_name_th || ''} ${userProfile?.last_name_th || ''}`.trim();
 
-            if (!creatorId) {
-                return alert("ไม่พบข้อมูลรหัสผู้ใช้ (Profile ID) ของท่าน กรุณาลอง Refresh หน้าเว็บหรือเข้าสู่ระบบใหม่");
-            }
+ const apptData = { 
+ patient_id: newAppt.patient_id, 
+ title: newAppt.title, 
+ time: newAppt.time, 
+ location: newAppt.location, 
+ date: newAppt.date, 
+ notes: newAppt.notes || '',
+ doctor_name: doctorName,
+ created_by: creatorId 
+ };
 
-            if (!newAppt.patient_id || !newAppt.time || !newAppt.date || !newAppt.location) {
-                return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
-            }
+ if (editingApptId) { 
+ const { error } = await supabase.from('appointments').update(apptData).eq('id', editingApptId); 
+ if (error) throw error;
+ } else { 
+ const { error } = await supabase.from('appointments').insert([{ 
+ ...apptData, 
+ status: 'รอตรวจ'
+ }]); 
+ if (error) throw error;
+ }
+ 
+ setShowModal(false); 
+ if (fetchAppointments) fetchAppointments(); 
+ alert("ลงนัดหมายสำเร็จ!");
+ } catch (error) { 
+ console.error("Save error:", error);
 
-            const doctorName = `${userProfile?.title_th || ''} ${userProfile?.first_name_th || ''} ${userProfile?.last_name_th || ''}`.trim();
-
-            const apptData = { 
-                patient_id: newAppt.patient_id, 
-                title: newAppt.title, 
-                time: newAppt.time, 
-                location: newAppt.location, 
-                date: newAppt.date, 
-                notes: newAppt.notes || '',
-                doctor_name: doctorName,
-                created_by: creatorId 
-            };
-
-            if (editingApptId) { 
-                const { error } = await supabase.from('appointments').update(apptData).eq('id', editingApptId); 
-                if (error) throw error;
-            } else { 
-                const { error } = await supabase.from('appointments').insert([{ 
-                    ...apptData, 
-                    status: 'รอตรวจ'
-                }]); 
-                if (error) throw error;
-            }
-            
-            setShowModal(false); 
-            if (fetchAppointments) fetchAppointments(); 
-            alert("ลงนัดหมายสำเร็จ!");
-        } catch (error) { 
-            console.error("Save error:", error);
-
-            alert(`เกิดข้อผิดพลาดในการบันทึก: ${error.message || 'โปรดตรวจสอบความถูกต้องของข้อมูล'}`);
-        }
-    };
+ alert(`เกิดข้อผิดพลาดในการบันทึก: ${error.message || 'โปรดตรวจสอบความถูกต้องของข้อมูล'}`);
+ }
+ };
 
 
     const renderCalendarDays = () => {

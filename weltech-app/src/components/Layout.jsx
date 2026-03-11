@@ -3,12 +3,11 @@ import {
     Menu, X, Home, User, ClipboardList, MessageCircle, 
     Users, Stethoscope, Shield, FileText, ArrowLeft, Microscope,
     BookOpen 
-    // Edit3 เอาออกก็ได้ถ้าไม่ได้ใช้แล้ว
 } from 'lucide-react';
 import { ThemeToggle } from './UIComponents'; 
 import logoImg from '../assets/logo.png'; 
 
-// --- SIDEBAR COMPONENT ---
+
 export const Sidebar = ({ 
     isSidebarOpen, 
     setIsSidebarOpen, 
@@ -21,7 +20,6 @@ export const Sidebar = ({
     onSignOut 
 }) => {
     
-    // กำหนดเมนูตาม Role
     const menuItems = {
         patient: [
             { id: 'home', label: 'หน้าหลัก', icon: Home },
@@ -36,7 +34,6 @@ export const Sidebar = ({
             { id: 'patients_all', label: 'ผู้ป่วยทั้งหมด', icon: Users },
             { id: 'patients_my', label: 'ผู้ป่วยในการดูแล', icon: Stethoscope },
             { id: 'consult', label: 'แพทย์อบอุ่น', icon: MessageCircle, hasBadge: true },
-            // ✅ รวมเมนูสร้างบทความไว้ใน "เกร็ดความรู้สุขภาพ" แล้ว จึงลบเมนูแยกออก
             { id: 'knowledge', label: 'เกร็ดความรู้สุขภาพ', icon: BookOpen },
             { id: 'smart_lab', label: 'Smart Lab AI', icon: Microscope },
         ],
@@ -47,7 +44,6 @@ export const Sidebar = ({
             { id: 'doctors_info', label: 'ข้อมูลบัญชีแพทย์', icon: Stethoscope },
             { id: 'admins_info', label: 'ข้อมูลบัญชีแอดมิน', icon: Shield },
             { id: 'requests', label: 'คำร้องรหัสผ่าน', icon: FileText },
-            // ✅ เหลือไว้แค่อันเดียว
             { id: 'knowledge', label: 'คลังความรู้', icon: BookOpen },
         ]
     };
@@ -56,7 +52,6 @@ export const Sidebar = ({
 
     return (
         <>
-            {/* Backdrop สำหรับ Mobile */}
             {isSidebarOpen && (
                 <div 
                     className="fixed inset-0 z-20 bg-black/50 md:hidden backdrop-blur-sm transition-opacity"
@@ -122,7 +117,7 @@ export const Sidebar = ({
     );
 };
 
-// --- HEADER COMPONENT ---
+
 export const Header = ({ theme, userProfile, setIsSidebarOpen }) => {
     const titlePrefix = userProfile?.title_th || 'คุณ';
 

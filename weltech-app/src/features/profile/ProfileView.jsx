@@ -15,8 +15,6 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
     const [previewImage, setPreviewImage] = useState(null);
     const [imageFile, setImageFile] = useState(null);
     const [imgError, setImgError] = useState(false);
-
-    // --- ส่วนเสริมสำหรับการจัดการเวลาออกตรวจ (Schedule Selector) ---
     const DAYS = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'];
     const TIME_SLOTS = [
         { label: '08:00 - 09:00', value: '08:00-09:00' }, { label: '09:00 - 10:00', value: '09:00-10:00' },
@@ -167,204 +165,179 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
     const showImage = (previewImage || profile.avatar_url) && !imgError;
 
     const renderScheduleTable = (isEditable) => (
-        <div className="bg-white/10 p-4 rounded-xl border border-white/20">
-            <label className="block text-sm font-bold mb-4 flex items-center gap-2 text-white">
-                <Clock size={16}/> {isEditable ? 'จัดการเวลาออกตรวจ' : 'ตารางเวลาออกตรวจ'}
-            </label>
+    <div className="bg-white/10 p-4 rounded-xl border border-white/20">
+        <label className="block text-sm font-bold mb-4 flex items-center gap-2 text-white">
+            <Clock size={16}/> {isEditable ? 'จัดการเวลาออกตรวจ' : 'ตารางเวลาออกตรวจ'}
+        </label>
 
-            {/* --- Mobile View: กางออกเป็นรายการรายวัน (แสดงเฉพาะหน้าจอมือถือ) --- */}
-            <div className="md:hidden space-y-3">
-                {DAYS.map(day => {
-                    const daySlots = TIME_SLOTS.filter(ts => 
-                        (editData.work_schedule || "").includes(`${day}(${ts.value})`)
-                    );
-                    if (!isEditable && daySlots.length === 0) return null;
+        <div className="block md:hidden space-y-3">
+            {DAYS.map(day => {
+                const daySlots = TIME_SLOTS.filter(ts => 
+                    (editData.work_schedule || "").includes(`${day}(${ts.value})`)
+                );
+                if (!isEditable && daySlots.length === 0) return null;
 
-                    return (
-                        <div key={day} className="bg-white/5 rounded-lg p-3 border border-white/10">
-                            <div className="text-xs font-bold text-blue-200 mb-2 border-b border-white/10 pb-1">วัน{day}</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                {isEditable ? (
-                                    TIME_SLOTS.map(ts => {
-                                        const slotId = `${day}(${ts.value})`;
-                                        const isActive = (editData.work_schedule || "").includes(slotId);
-                                        return (
-                                            <button
-                                                key={ts.value}
-                                                type="button"
-                                                onClick={() => toggleScheduleSlot(day, ts.value)}
-                                                className={`text-[10px] p-2 rounded-md transition-all border ${
-                                                    isActive 
-                                                    ? 'bg-white text-blue-600 font-bold border-white' 
-                                                    : 'bg-transparent text-white/60 border-white/20'
-                                                }`}
-                                            >
-                                                {ts.value} {isActive && '✓'}
-                                            </button>
-                                        );
-                                    })
-                                ) : (
-                                    daySlots.map(ts => (
-                                        <div key={ts.value} className="text-[11px] bg-white/20 text-white p-1.5 rounded-md text-center">
-                                            {ts.value}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+                return (
+                    <div key={day} className="bg-white/5 rounded-lg p-3 border border-white/10">
+                        <div className="text-xs font-bold text-blue-200 mb-2 border-b border-white/10 pb-1">วัน{day}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {isEditable ? (
+                                TIME_SLOTS.map(ts => {
+                                    const slotId = `${day}(${ts.value})`;
+                                    const isActive = (editData.work_schedule || "").includes(slotId);
+                                    return (
+                                        <button
+                                            key={ts.value}
+                                            type="button"
+                                            onClick={() => toggleScheduleSlot(day, ts.value)}
+                                            className={`text-[10px] p-2 rounded-md transition-all border ${
+                                                isActive 
+                                                ? 'bg-white text-blue-600 font-bold border-white' 
+                                                : 'bg-transparent text-white/60 border-white/20'
+                                            }`}
+                                        >
+                                            {ts.value} {isActive && '✓'}
+                                        </button>
+                                    );
+                                })
+                            ) : (
+                                daySlots.map(ts => (
+                                    <div key={ts.value} className="text-[11px] bg-white/20 text-white p-1.5 rounded-md text-center">
+                                        {ts.value}
+                                    </div>
+                                ))
+                            )}
                         </div>
-                    );
-                })}
-            </div>
-
-            {/* --- Desktop View: ตารางแบบดั้งเดิม (แสดงตั้งแต่จอขนาดกลางขึ้นไป) --- */}
-            <div className="hidden md:block overflow-hidden rounded-lg border border-white/10">
-                <div className="overflow-x-auto custom-scroll">
-                    <table className="w-full text-xs text-center border-collapse">
-                        <thead>
-                            <tr className="bg-black/20">
-                                <th className="p-3 text-left text-white sticky left-0 bg-[#5677fc] z-10 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">วัน / เวลา</th>
-                                {TIME_SLOTS.map(ts => (
-                                    <th key={ts.value} className="p-3 font-bold whitespace-nowrap text-white border-l border-white/5">{ts.value}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {DAYS.map(day => (
-                                <tr key={day} className="border-t border-white/10 hover:bg-white/5 transition-colors">
-                                    <td className="p-3 text-left font-bold text-white sticky left-0 bg-[#5677fc] z-10 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">{day}</td>
-                                    {TIME_SLOTS.map(ts => {
-                                        const slotId = `${day}(${ts.value})`;
-                                        const isActive = (editData.work_schedule || "").includes(slotId);
-                                        return (
-                                            <td key={ts.value} className="p-1 border-l border-white/5">
-                                                {isEditable ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => toggleScheduleSlot(day, ts.value)}
-                                                        className={`w-full h-9 rounded-md transition-all flex items-center justify-center border ${
-                                                            isActive 
-                                                            ? 'bg-white text-blue-600 shadow-inner' 
-                                                            : 'hover:bg-white/10 text-transparent border-transparent hover:border-white/20'
-                                                        }`}
-                                                    >
-                                                        {isActive ? <span className="font-bold">✓</span> : ''}
-                                                    </button>
-                                                ) : (
-                                                    <div className={`w-full h-9 flex items-center justify-center rounded-md ${isActive ? 'bg-white/20 text-white font-bold' : 'opacity-10'}`}>
-                                                        {isActive ? '✓' : '-'}
-                                                    </div>
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {isEditable && (
-                <div className="mt-3 text-[10px] opacity-70 italic border-t border-white/10 pt-2 text-white flex items-center gap-1">
-                    <AlertTriangle size={12}/> * คลิกที่ช่องเพื่อจัดการเวลาออกตรวจ ข้อมูลจะถูกสรุปเป็นข้อความโดยอัตโนมัติ
-                </div>
-            )}
+                    </div>
+                );
+            })}
         </div>
-    );
+
+        <div className="hidden md:block overflow-x-auto rounded-lg border border-white/10 custom-scroll">
+            <table className="w-full min-w-[800px] text-[10px] text-center border-collapse table-fixed">
+                <thead>
+                    <tr className="bg-black/20">
+                        <th className="p-2 text-left text-white sticky left-0 bg-[#5677fc] z-20 w-[80px]">วัน</th>
+                        {TIME_SLOTS.map(ts => (
+                            <th key={ts.value} className="p-2 font-bold text-white border-l border-white/5">{ts.value}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {DAYS.map(day => (
+                        <tr key={day} className="border-t border-white/10 hover:bg-white/5 transition-colors">
+                            <td className="p-2 text-left font-bold text-white sticky left-0 bg-[#5677fc] z-10 shadow-md">{day}</td>
+                            {TIME_SLOTS.map(ts => {
+                                const slotId = `${day}(${ts.value})`;
+                                const isActive = (editData.work_schedule || "").includes(slotId);
+                                return (
+                                    <td key={ts.value} className="p-0 border-l border-white/5">
+                                        <button
+                                            type="button"
+                                            disabled={!isEditable}
+                                            onClick={() => isEditable && toggleScheduleSlot(day, ts.value)}
+                                            className={`w-full h-8 transition-all flex items-center justify-center border-none ${
+                                                isActive 
+                                                ? 'bg-white text-blue-600 shadow-inner font-bold' 
+                                                : isEditable ? 'hover:bg-white/10 text-transparent' : 'opacity-10 text-white'
+                                            }`}
+                                        >
+                                            {isActive ? '✓' : (!isEditable ? '-' : '')}
+                                        </button>
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
 
     return (
-    <div className="flex flex-col gap-8 h-full animate-fade-in overflow-y-auto custom-scroll pr-2">
-        <div className="flex flex-col md:flex-row gap-8 items-start">
-            <div className="relative group shrink-0">
-                <div className={`w-32 h-32 rounded-full border-4 shadow-lg overflow-hidden flex items-center justify-center ${theme === 'dark' ? 'bg-slate-700 border-slate-600' : 'bg-white border-white'}`}>
-                    {showImage ? (
-                        <img src={previewImage || profile.avatar_url} className="w-full h-full object-cover" onError={() => setImgError(true)} alt="Profile" />
-                    ) : (
-                        <div className={`w-full h-full flex items-center justify-center ${theme === 'dark' ? 'bg-slate-800 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                            <User size={64} />
-                        </div>
-                    )}
-                </div>
-                {isEditing && canEditGeneral && (
-                    <label className="absolute bottom-0 right-0 p-2 bg-blue-600 text-white rounded-full cursor-pointer hover:bg-blue-700 shadow-md transition-all">
-                        <Camera size={16} />
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                    </label>
-                )}
-            </div>
+    <div className="flex flex-col gap-6 h-full animate-fade-in overflow-y-auto custom-scroll pr-2 pb-6">
+
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
             
-            <div className="flex-1 w-full space-y-6">
-                <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                          {isEditing ? (
-                            <div className="space-y-2">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <CustomCombobox name="title_th" value={editData.title_th ?? ''} onChange={handleChange} options={profile.role === 'doctor' 
-                                        ? ['นพ.', 'พญ.', 'ดร.', 'ทนพ.', 'ทนพญ.', 'นาย', 'นาง', 'นางสาว'] 
-                                        : ['นาย', 'นาง', 'นางสาว', 'ด.ช.', 'ด.ญ.']
-                                    } placeholder="คำนำหน้า" theme={theme} disabled={!canEditGeneral} />
-                                    <InputField name="first_name_th" value={editData.first_name_th ?? ''} onChange={handleChange} placeholder="ชื่อ (ไทย)" theme={theme} disabled={!canEditGeneral} />
-                                    <InputField name="last_name_th" value={editData.last_name_th ?? ''} onChange={handleChange} placeholder="สกุล (ไทย)" theme={theme} disabled={!canEditGeneral} />
-                                </div>
-                            </div>
-                          ) : (
-                            <>
-                                <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                                    {profile.title_th} {profile.first_name_th} {profile.last_name_th}
-                                </h2>
-                                <p className="text-gray-500">{profile.title_en} {profile.first_name_en} {profile.last_name_en}</p>
-                            </>
-                          )}
-                        {!hideAddress && <p className="text-xs text-gray-400 mt-1">ID: {profile.id_card}</p>}
-                    </div>
-                    
-                    {!hideAddress && (
-                        <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} 
-                            disabled={saveLoading}
-                            className={`ml-4 px-4 py-2 border rounded-xl text-sm font-bold flex items-center gap-2
-                            ${isEditing ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : (theme === 'dark' ? 'border-slate-600 text-gray-300 hover:bg-slate-700' : 'border-gray-300 hover:bg-gray-50')}`}>
-                            {isEditing ? (saveLoading ? 'กำลังบันทึก...' : <><Save size={16}/> บันทึก</>) : <><Edit2 size={16}/> แก้ไขข้อมูล</>}
-                        </button>
-                    )}
-                </div>
-                
-                <div className={`p-4 rounded-xl space-y-2 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
-                    <h4 className={`font-bold flex items-center gap-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}><UserCheck size={18}/> ข้อมูลทั่วไป</h4>
-                    {isEditing ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                             <div className="space-y-1"><label className="text-xs text-gray-500">เบอร์โทรศัพท์</label><InputField name="phone" value={editData.phone ?? ''} onChange={handleChange} maxLength={10} theme={theme} disabled={!canEditGeneral} /></div>
-                             <div className="space-y-1"><label className="text-xs text-gray-500">อีเมล</label><InputField name="contact_email" value={editData.contact_email ?? ''} onChange={handleChange} theme={theme} disabled={!canEditGeneral} /></div>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 text-sm">
-                            {!hideAddress && (
-                                <div>
-                                    <span className="text-gray-500 w-fit inline-block mr-2">วันเกิด:</span> 
-                                    <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                                        {formatThaiDateFull(profile.dob)} (อายุ {calculateAge(profile.dob)} ปี)
-                                    </span>
+            <div className="w-full lg:w-1/3 space-y-6 lg:sticky lg:top-0">
+                <div className="flex flex-col items-center gap-4 bg-white/5 p-6 rounded-2xl border border-white/10 shadow-sm">
+                    <div className="relative group">
+                        <div className={`w-32 h-32 rounded-full border-4 shadow-xl overflow-hidden flex items-center justify-center ${theme === 'dark' ? 'bg-slate-700 border-slate-600' : 'bg-white border-white'}`}>
+                            {showImage ? (
+                                <img src={previewImage || profile.avatar_url} className="w-full h-full object-cover" onError={() => setImgError(true)} alt="Profile" />
+                            ) : (
+                                <div className={`w-full h-full flex items-center justify-center ${theme === 'dark' ? 'bg-slate-800 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                                    <User size={64} />
                                 </div>
                             )}
-                            <div>
-                                <span className="text-gray-500 w-fit inline-block mr-2">เบอร์โทรศัพท์:</span> 
-                                <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                                    {profile.phone || '-'}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="text-gray-500 w-fit inline-block mr-2">อีเมล:</span> 
-                                <span className={`${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                                    {profile.contact_email || '-'}
-                                </span>
-                            </div>
                         </div>
-                    )}
+                        {isEditing && canEditGeneral && (
+                            <label className="absolute bottom-0 right-0 p-2 bg-blue-600 text-white rounded-full cursor-pointer hover:bg-blue-700 shadow-md transition-all">
+                                <Camera size={16} />
+                                <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                            </label>
+                        )}
+                    </div>
+                    
+                    <div className="text-center w-full">
+                        {isEditing ? (
+                            <div className="space-y-2">
+                                <CustomCombobox name="title_th" value={editData.title_th ?? ''} onChange={handleChange} options={profile.role === 'doctor' 
+                                    ? ['นพ.', 'พญ.', 'ดร.', 'ทนพ.', 'ทนพญ.', 'นาย', 'นาง', 'นางสาว'] 
+                                    : ['นาย', 'นาง', 'นางสาว', 'ด.ช.', 'ด.ญ.']
+                                } placeholder="คำนำหน้า" theme={theme} disabled={!canEditGeneral} />
+                                <InputField name="first_name_th" value={editData.first_name_th ?? ''} onChange={handleChange} placeholder="ชื่อ (ไทย)" theme={theme} disabled={!canEditGeneral} />
+                                <InputField name="last_name_th" value={editData.last_name_th ?? ''} onChange={handleChange} placeholder="สกุล (ไทย)" theme={theme} disabled={!canEditGeneral} />
+                            </div>
+                        ) : (
+                            <>
+                                <h2 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                                    {profile.title_th} {profile.first_name_th} {profile.last_name_th}
+                                </h2>
+                                <p className="text-sm text-gray-500">{profile.title_en} {profile.first_name_en} {profile.last_name_en}</p>
+                                {!hideAddress && <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">HN: {profile.hn || profile.id_card}</p>}
+                            </>
+                        )}
+                        
+                        {!hideAddress && (
+                            <button onClick={() => isEditing ? handleSave() : setIsEditing(true)} 
+                                disabled={saveLoading}
+                                className={`mt-4 w-full px-4 py-2 border rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all
+                                ${isEditing ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : (theme === 'dark' ? 'border-slate-600 text-gray-300 hover:bg-slate-700' : 'border-gray-300 hover:bg-gray-50')}`}>
+                                {isEditing ? (saveLoading ? 'กำลังบันทึก...' : <><Save size={16}/> บันทึก</>) : <><Edit2 size={16}/> แก้ไขข้อมูล</>}
+                            </button>
+                        )}
+                    </div>
                 </div>
 
+                <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+                    <h4 className={`font-bold text-xs flex items-center gap-2 mb-3 uppercase tracking-widest ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}><UserCheck size={14}/> ข้อมูลทั่วไป</h4>
+                    <div className="space-y-3 text-sm">
+                        {isEditing ? (
+                            <>
+                                <div className="space-y-1"><label className="text-[10px] text-gray-500 uppercase">เบอร์โทรศัพท์</label><InputField name="phone" value={editData.phone ?? ''} onChange={handleChange} maxLength={10} theme={theme} disabled={!canEditGeneral} /></div>
+                                <div className="space-y-1"><label className="text-[10px] text-gray-500 uppercase">อีเมล</label><InputField name="contact_email" value={editData.contact_email ?? ''} onChange={handleChange} theme={theme} disabled={!canEditGeneral} /></div>
+                            </>
+                        ) : (
+                            <>
+                                <div><span className="text-gray-500 block text-[10px] uppercase">วันเกิด</span><span className="font-medium">{formatThaiDateFull(profile.dob)} ({calculateAge(profile.dob)} ปี)</span></div>
+                                <div><span className="text-gray-500 block text-[10px] uppercase">เบอร์โทรศัพท์</span><span className="font-medium">{profile.phone || '-'}</span></div>
+                                <div><span className="text-gray-500 block text-[10px] uppercase">อีเมล</span><span className="font-medium break-all">{profile.contact_email || '-'}</span></div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+
+            <div className="flex-1 w-full space-y-6">
+                
                 {!hideAddress && (
                     <div className={`p-4 rounded-xl space-y-2 border ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                         <h4 className={`font-bold flex items-center gap-2 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}><MapPin size={18}/> ที่อยู่ปัจจุบัน</h4>
                         {isEditing ? (
-                            <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
                                 <InputField name="house_no" value={editData.house_no ?? ''} onChange={handleChange} placeholder="บ้านเลขที่" theme={theme} disabled={!canEditGeneral} />
                                 <InputField name="moo" value={editData.moo ?? ''} onChange={handleChange} placeholder="หมู่" theme={theme} disabled={!canEditGeneral} />
                                 <InputField name="soi" value={editData.soi ?? ''} onChange={handleChange} placeholder="ซอย" theme={theme} disabled={!canEditGeneral} />
@@ -379,53 +352,53 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
                 )}
 
                 {(profile.role === 'patient' || isDoctorView) && !hideAddress && (
-                    <div className={`p-4 rounded-xl space-y-2 border ${theme === 'dark' ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50/20 border-blue-100'}`}>
+                    <div className={`p-6 rounded-2xl space-y-4 border ${theme === 'dark' ? 'bg-blue-900/10 border-blue-800/50' : 'bg-blue-50/20 border-blue-100'}`}>
                         <div className="flex justify-between items-center mb-2">
                             <h4 className="font-bold flex items-center gap-2" style={{color: 'var(--theme-primary)'}}><Activity size={18}/> ข้อมูลสุขภาพ</h4>
-                            {isEditing && !canEditHealth && <span className="text-xs text-orange-500 flex items-center gap-1"><AlertTriangle size={12}/> แพทย์เท่านั้นที่แก้ไขส่วนนี้ได้</span>}
+                            {isEditing && !canEditHealth && <span className="text-[10px] text-orange-500 bg-orange-500/10 px-2 py-1 rounded-full flex items-center gap-1"><AlertTriangle size={12}/> แพทย์เท่านั้นที่แก้ไขส่วนนี้ได้</span>}
                         </div>
                         
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">น้ำหนัก (กก.)</label>
-                                {isEditing ? <input type="number" name="weight" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.weight ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.weight || '-'}</div>}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] uppercase font-bold">น้ำหนัก (กก.)</label>
+                                {isEditing ? <input type="number" name="weight" className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800" value={editData.weight ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-bold text-lg">{profile.weight || '-'}</div>}
                              </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">ส่วนสูง (ซม.)</label>
-                                {isEditing ? <input type="number" name="height" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.height ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.height || '-'}</div>}
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] uppercase font-bold">ส่วนสูง (ซม.)</label>
+                                {isEditing ? <input type="number" name="height" className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800" value={editData.height ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-bold text-lg">{profile.height || '-'}</div>}
                              </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">กรุ๊ปเลือด</label>
-                                {isEditing ? <CustomCombobox name="blood_group" value={editData.blood_group ?? ''} onChange={handleChange} options={['A', 'B', 'O', 'AB']} disabled={!canEditHealth} theme={theme}/> : <div className="font-medium">{profile.blood_group || '-'}</div>}
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] uppercase font-bold">กรุ๊ปเลือด</label>
+                                {isEditing ? <CustomCombobox name="blood_group" value={editData.blood_group ?? ''} onChange={handleChange} options={['A', 'B', 'O', 'AB']} disabled={!canEditHealth} theme={theme}/> : <div className="font-bold text-lg">{profile.blood_group || '-'}</div>}
                              </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">โรคประจำตัว</label>
-                                {isEditing ? <input type="text" name="disease" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.disease ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium text-red-500">{profile.disease || '-'}</div>}
-                             </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-3 pt-3 border-t border-blue-200/50">
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">แพ้ยา</label>
-                                {isEditing ? <input type="text" name="allergy" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.allergy ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium text-red-500">{profile.allergy || '-'}</div>}
-                             </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">แพ้อาหาร</label>
-                                {isEditing ? <input type="text" name="food_allergies" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.food_allergies ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium text-red-500">{profile.food_allergies || '-'}</div>}
-                             </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">ยาที่ทานปัจจุบัน</label>
-                                {isEditing ? <input type="text" name="current_medication" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.current_medication ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.current_medication || '-'}</div>}
-                             </div>
-                             <div className="space-y-1"><label className="text-gray-500 text-xs">ประวัติการผ่าตัด</label>
-                                {isEditing ? <input type="text" name="surgical_history" className="w-full p-2 border rounded bg-white dark:bg-slate-800 dark:text-white" value={editData.surgical_history ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.surgical_history || '-'}</div>}
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] uppercase font-bold text-red-500">โรคประจำตัว</label>
+                                {isEditing ? <input type="text" name="disease" className="w-full p-2 border rounded-lg bg-white dark:bg-slate-800" value={editData.disease ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-bold text-lg text-red-500">{profile.disease || '-'}</div>}
                              </div>
                         </div>
 
-                        <div className="mt-4 pt-3 border-t border-blue-200/50">
-                             <label className="text-xs font-bold text-gray-500 mb-2 block">ข้อมูลผู้ติดต่อฉุกเฉิน</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mt-3 pt-3 border-t border-blue-200/30">
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] font-bold uppercase">แพ้ยา</label>
+                                {isEditing ? <input type="text" name="allergy" className="w-full p-2 border rounded bg-white dark:bg-slate-800" value={editData.allergy ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium text-red-500">{profile.allergy || '-'}</div>}
+                             </div>
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] font-bold uppercase">แพ้อาหาร</label>
+                                {isEditing ? <input type="text" name="food_allergies" className="w-full p-2 border rounded bg-white dark:bg-slate-800" value={editData.food_allergies ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium text-red-500">{profile.food_allergies || '-'}</div>}
+                             </div>
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] font-bold uppercase">ยาที่ทานปัจจุบัน</label>
+                                {isEditing ? <input type="text" name="current_medication" className="w-full p-2 border rounded bg-white dark:bg-slate-800" value={editData.current_medication ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.current_medication || '-'}</div>}
+                             </div>
+                             <div className="space-y-1"><label className="text-gray-500 text-[10px] font-bold uppercase">ประวัติการผ่าตัด</label>
+                                {isEditing ? <input type="text" name="surgical_history" className="w-full p-2 border rounded bg-white dark:bg-slate-800" value={editData.surgical_history ?? ''} onChange={handleChange} disabled={!canEditHealth} /> : <div className="font-medium">{profile.surgical_history || '-'}</div>}
+                             </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-blue-200/30">
+                             <label className="text-[10px] font-bold text-gray-500 mb-2 block uppercase">Emergency Contact</label>
                              {isEditing ? (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                     <InputField name="emergency_contact_name" value={editData.emergency_contact_name ?? ''} onChange={handleChange} placeholder="ชื่อ-สกุล ญาติ" theme={theme} disabled={!canEditHealth}/>
                                     <InputField name="emergency_contact_phone" value={editData.emergency_contact_phone ?? ''} onChange={handleChange} placeholder="เบอร์โทร" theme={theme} disabled={!canEditHealth}/>
                                     <CustomCombobox name="emergency_relationship" value={editData.emergency_relationship ?? ''} onChange={handleChange} options={['บิดา', 'มารดา', 'บุตร', 'ผู้ปกครอง', 'พี่', 'น้อง', 'ญาติ', 'คู่สมรส', 'เพื่อน']} placeholder="ความสัมพันธ์" theme={theme} disabled={!canEditHealth}/>
                                 </div>
-                                 ) : (
-                                <div className="text-sm">
-                                    คุณ {profile.emergency_contact_name || '-'} ({profile.emergency_relationship || '-'}) โทร: {profile.emergency_contact_phone || '-'}
+                                  ) : (
+                                <div className="text-sm font-medium">
+                                    คุณ {profile.emergency_contact_name || '-'} ({profile.emergency_relationship || '-'}) <span className="mx-2 text-gray-300">|</span> โทร: {profile.emergency_contact_phone || '-'}
                                 </div>
                             )}
                         </div>
@@ -433,7 +406,7 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
                 )}
                 
                 {(profile.role === 'doctor' && !isDoctorView) && (
-                    <div className="p-4 rounded-xl space-y-4 border shadow-md" style={{ backgroundColor: '#5677fc', color: 'white', borderColor: '#4a6cf0' }}>
+                    <div className="p-6 rounded-2xl space-y-4 border shadow-xl" style={{ backgroundColor: '#5677fc', color: 'white', borderColor: '#4a6cf0' }}>
                         <h4 className="font-bold flex items-center gap-2"><Briefcase size={18}/> ข้อมูลแพทย์</h4>
                         {isEditing ? (
                             <div className="space-y-4">
@@ -448,14 +421,26 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
                                 {renderScheduleTable(true)}
                             </div>
                         ) : (
-                            <div className="text-sm space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    <div><span className="opacity-70">เลขใบประกอบฯ:</span> {profile.license_id || '-'}</div>
-                                    <div><span className="opacity-70">แผนก:</span> {profile.department || '-'}</div>
-                                    <div><span className="opacity-70">ความเชี่ยวชาญ:</span> {profile.specialization || '-'}</div>
-                                    <div><span className="opacity-70">ประวัติการศึกษา:</span> {profile.education || '-'}</div>
+                            <div className="text-sm space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white/10 p-3 rounded-xl">
+                                        <span className="opacity-70 block text-[10px] uppercase font-bold">License ID</span>
+                                        <span className="font-bold text-base">{profile.license_id || '-'}</span>
+                                    </div>
+                                    <div className="bg-white/10 p-3 rounded-xl">
+                                        <span className="opacity-70 block text-[10px] uppercase font-bold">Department</span>
+                                        <span className="font-bold text-base">{profile.department || '-'}</span>
+                                    </div>
+                                    <div className="bg-white/10 p-3 rounded-xl">
+                                        <span className="opacity-70 block text-[10px] uppercase font-bold">Specialization</span>
+                                        <span className="font-bold text-base">{profile.specialization || '-'}</span>
+                                    </div>
+                                    <div className="bg-white/10 p-3 rounded-xl">
+                                        <span className="opacity-70 block text-[10px] uppercase font-bold">Education</span>
+                                        <span className="font-bold text-base">{profile.education || '-'}</span>
+                                    </div>
                                 </div>
-                                <div className="mt-2 pt-2 border-t border-white/20">
+                                <div className="pt-2">
                                     {renderScheduleTable(false)}
                                 </div>
                             </div>
@@ -464,9 +449,11 @@ const ProfileView = ({ data, isDoctorView = false, onSaveHealthData, addressDB =
                 )}
             </div>
         </div>
+
+
         {isDoctorView && !hideAddress && (
-            <div className="mt-4 pt-6 border-t border-dashed border-gray-200">
-                < PatientHistory patientName={`${profile.title_th} ${profile.first_name_th} ${profile.last_name_th}`} treatmentHistory={treatmentHistory} theme={theme} />
+            <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
+                <PatientHistory patientName={`${profile.title_th} ${profile.first_name_th} ${profile.last_name_th}`} treatmentHistory={treatmentHistory} theme={theme} />
             </div>
         )}
     </div>

@@ -28,8 +28,6 @@ const PasswordRequestTable = ({ theme }) => {
 
     useEffect(() => {
         fetchRequests();
-        
-        // เพิ่ม Real-time Subscription เพื่อให้แอดมินเห็นคำร้องใหม่ทันที
         const channel = supabase
             .channel('db_changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'password_requests' }, () => {
@@ -65,8 +63,9 @@ const PasswordRequestTable = ({ theme }) => {
     };
 
     const filteredRequests = requests.filter(r => 
-        r.id_card.includes(searchTerm) || r.phone.includes(searchTerm)
-    );
+    (r.id_card && r.id_card.includes(searchTerm)) || 
+    (r.phone && r.phone.includes(searchTerm))
+);
 
     return (
         <div className={`h-full flex flex-col p-4 animate-fade-in ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>

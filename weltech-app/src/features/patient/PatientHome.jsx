@@ -12,7 +12,7 @@ const PatientHome = ({ theme, userProfile, appointments }) => {
     const [viewingDoctor, setViewingDoctor] = useState(null);
     const [currentTime, setCurrentTime] = useState(new Date());
     
-    // --- ส่วนที่ดึงมาจาก DoctorDashboard ---
+
     const [coords, setCoords] = useState({ lat: 13.75, lon: 100.50 });
     const [weatherData, setWeatherData] = useState({ 
         temp: '--', 
@@ -116,7 +116,7 @@ const PatientHome = ({ theme, userProfile, appointments }) => {
         };
         return map[aqi] || { label: 'กำลังโหลด...', color: 'text-gray-400', bg: 'bg-gray-100', pos: '0%' };
     };
-    // --- จบส่วนที่ดึงมาจาก DoctorDashboard ---
+
 
     const handleViewDoctor = async () => {
         const docId = userProfile?.doctor_id;
@@ -169,9 +169,9 @@ const PatientHome = ({ theme, userProfile, appointments }) => {
 
     return (
         <div className="space-y-6">
-            {/* --- ส่วนแสดงผลสภาพอากาศ (Weather Sections) --- */}
+  
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5 shrink-0">
-                {/* ช่อง 1: อุณหภูมิ + เวลาเรียลไทม์ */}
+
                 <div className={`relative overflow-hidden p-5 md:p-6 rounded-[1.8rem] md:rounded-[2rem] shadow-lg flex flex-col justify-between min-h-[11rem] md:h-52 text-white bg-gradient-to-br transition-all duration-1000 ${timeScene.class}`}>
                     <div className="absolute inset-0 opacity-15 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]"></div>
                     <div className="z-10 flex justify-between items-start">
@@ -199,7 +199,6 @@ const PatientHome = ({ theme, userProfile, appointments }) => {
                     </div>
                 </div>
 
-                {/* ช่อง 2: ความชื้น */}
                 <div className={`p-5 md:p-6 rounded-[1.8rem] md:rounded-[2rem] border shadow-sm flex flex-col justify-between min-h-[11rem] md:h-52 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <div className="flex items-center gap-2 text-blue-500">
                         <Droplets size={18} />
@@ -215,7 +214,6 @@ const PatientHome = ({ theme, userProfile, appointments }) => {
                     </div>
                 </div>
 
-                {/* ช่อง 3: AQI */}
                 <div className={`p-5 md:p-6 rounded-[1.8rem] md:rounded-[2rem] border shadow-sm flex flex-col justify-between min-h-[11rem] md:h-52 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <div className="flex items-center gap-2 text-blue-500">
                         <Wind size={18} />

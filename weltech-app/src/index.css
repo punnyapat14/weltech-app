@@ -4,7 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 1. บังคับฟอนต์ให้ครอบคลุมถึงพวก Input และ Button ด้วย */
 * {
   font-family: 'Prompt', sans-serif !important;
 }
@@ -13,11 +12,9 @@ body {
   font-family: 'Prompt', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* 2. เพิ่มส่วนนี้เพื่อให้การเปลี่ยนธีม (Dark/Light) สมูทขึ้น */
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* 3. แก้ปัญหา Tailwind Custom Scrollbar (ถ้ามี) */
 .custom-scroll::-webkit-scrollbar {
   width: 6px;
 }
@@ -25,6 +22,6 @@ body {
   background: transparent;
 }
 .custom-scroll::-webkit-scrollbar-thumb {
-  background: #e2e8f0; /* สีเทาอ่อน */
+  background: #e2e8f0; 
   border-radius: 10px;
 }

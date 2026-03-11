@@ -1,5 +1,3 @@
-// src/components/DoctorHealthTips.jsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
     Image as ImageIcon, Send, Trash2, User, Paperclip, FileText, X 
@@ -117,7 +115,6 @@ const DoctorHealthTips = ({ userProfile, theme }) => {
                     </h1>
                 </div>
 
-                {/* ส่วนการสร้างโพสต์: ปรับแก้ไขสีพื้นหลังกรอบให้ Response ตามโหมดสว่าง/มืด */}
                 <div 
                     style={{ 
                         backgroundColor: theme === 'dark' ? '#1e293b' : '#ffffff' 
@@ -200,7 +197,6 @@ const DoctorHealthTips = ({ userProfile, theme }) => {
                     </div>
                 </div>
 
-                {/* ส่วนการแสดงฟีดบทความ */}
                 {loading ? (
                     <div className="text-center py-10"><span className="loading loading-spinner text-blue-500"></span></div>
                 ) : (

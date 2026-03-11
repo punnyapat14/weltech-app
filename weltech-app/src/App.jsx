@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient'; 
 import { Loader } from 'lucide-react';
 
-// --- Assets ---
 import kmutnbLogo from './assets/kmutnb.png';
 import projectLogo from './assets/logo.png';
 
-// --- Components & Features ---
 import WelcomePage from './WelcomePage'; 
 import GlobalStyles from './components/GlobalStyles';
 import { Sidebar, Header } from './components/Layout';
@@ -20,7 +18,6 @@ import DoctorDashboard from './features/doctor/DoctorDashboard';
 import DoctorSmartLab from './features/doctor/DoctorSmartLab'; 
 import AdminDashboard from './features/admin/AdminDashboard'; 
 import AdminAccountTable from './features/admin/AdminAccountTable'; 
-// 🟢 เพิ่มการ Import PasswordRequestTable
 import PasswordRequestTable from './features/admin/PasswordRequestTable'; 
 import AllPatientsView from './features/doctor/AllPatientsView';
 import MyPatientsView from './features/doctor/MyPatientsView';
@@ -31,7 +28,6 @@ import { Chart as ChartJS } from 'chart.js';
 ChartJS.defaults.font.family = 'Prompt'; 
 
 const App = () => {
-  // --- 1. State Management ---
   const [showWelcome, setShowWelcome] = useState(localStorage.getItem('hasEnteredApp') !== 'true');
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   
@@ -61,7 +57,7 @@ const App = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // --- 2. Initial Data Loading ---
+
   useEffect(() => {
     notificationAudio.current = new Audio('/alert.mp3');
     const fetchAddr = async () => {
@@ -73,7 +69,6 @@ const App = () => {
     };
     fetchAddr();
 
-    // 🟢 2.1 เพิ่มระบบ Real-time Listen สำหรับคำร้องรหัสผ่าน (ถ้ามีการอัปเดตจะให้ผู้ใช้รับรู้ทันที)
     const passwordChannel = supabase
       .channel('public:password_requests')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'password_requests' }, payload => {
@@ -96,7 +91,6 @@ const App = () => {
       }
   }, [userProfile?.role]);
 
-  // --- 3. Auth & Profile Logic ---
   const fetchProfile = async (userId) => { 
     if (isRegisteringRef.current) return;
     setProfileLoading(true);
@@ -271,7 +265,6 @@ const App = () => {
     localStorage.setItem('hasEnteredApp', 'true');
   };
 
-  // --- 4. Data Fetching Helpers ---
   const fetchPatientsForDoctor = async () => {
     try {
         const { data: profiles, error: pError } = await supabase
@@ -328,7 +321,6 @@ const App = () => {
       }
   };
 
-  // --- 5. Render Logic ---
   if (profileLoading) {
     return (
       <div className={`w-screen h-screen flex flex-col items-center justify-center transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900' : 'bg-white'}`}>
@@ -384,7 +376,6 @@ const App = () => {
                 
                 <div key={activeTab} className="animate-fade-in">
                     
-                    {/* --- Patient Role --- */}
                     {userProfile.role === 'patient' && (
                         <>
                             {activeTab === 'home' && <PatientHome theme={theme} userProfile={userProfile} appointments={appointments} />}
@@ -395,7 +386,6 @@ const App = () => {
                         </>
                     )}
 
-                    {/* --- Doctor Role --- */}
                     {userProfile.role === 'doctor' && (
                         <>
                             {activeTab === 'home' && (
@@ -417,7 +407,7 @@ const App = () => {
                         </>
                     )}
 
-                    {/* --- Admin Role --- */}
+
                     {userProfile.role === 'admin' && (
                         <>
                             {activeTab === 'home' && <AdminDashboard theme={theme} />}
@@ -426,7 +416,7 @@ const App = () => {
                             {activeTab === 'admins_info' && <AdminAccountTable roleType="admin" title="ข้อมูลบัญชีแอดมิน" theme={theme} />}
                             {activeTab === 'profile' && <ProfileView data={userProfile} addressDB={thaiAddressDB} theme={theme} onSaveHealthData={handleSaveHealthData} />}
                             {activeTab === 'knowledge' && <DoctorHealthTips userProfile={userProfile} theme={theme} />}
-                            {/* 🟢 เพิ่มเงื่อนไขสำหรับแสดงผลหน้าคำร้องรหัสผ่าน */}
+
                             {activeTab === 'password_requests' && <PasswordRequestTable theme={theme} />}
                         </>
                     )}

@@ -6,12 +6,8 @@ import {
 } from 'lucide-react';
 import { InputField, CustomCombobox, ThemeToggle } from '../../components/UIComponents';
 import { calculateAge, RELIGIONS, DEFAULT_NATIONALITIES, FALLBACK_PROVINCES } from '../../utils/helpers';
-
-// Constant
 const DUMMY_DOMAIN = "@weltech.app";
-
 const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsRegistering }) => {
-  // --- State Variables ---
   const [isRegisterActive, setIsRegisterActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentRole, setCurrentRole] = useState('patient');
@@ -21,7 +17,6 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [forgotData, setForgotData] = useState({ idCard: '', phone: '', adminResponse: '', status: '' });
 
-  // Registration State
   const [regData, setRegData] = useState({
     profileImage: null, profileImageFile: null,
     idCard: '', password: '', confirmPassword: '', phone: '', email: '',
@@ -46,14 +41,12 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
   const [bmiValue, setBmiValue] = useState(null);
   const [bmiStatus, setBmiStatus] = useState(null);
 
-  // Address Options
   const [nationalityOpts, setNationalityOpts] = useState(DEFAULT_NATIONALITIES);
   const [thaiAddressDB, setThaiAddressDB] = useState([]);
   const [provinceOpts, setProvinceOpts] = useState(FALLBACK_PROVINCES);
   const [districtOpts, setDistrictOpts] = useState([]);
   const [subDistrictOpts, setSubDistrictOpts] = useState([]);
 
-  // --- Effects ---
   useEffect(() => {
       document.body.setAttribute('data-role', currentRole);
       return () => document.body.removeAttribute('data-role');
@@ -129,8 +122,6 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
     } else { setBmiValue(null); setBmiStatus(null); }
   }, [regData.weight, regData.height, currentRole]);
 
-
-  // --- Handlers ---
   const handleRegChange = (e) => {
     const { name, value } = e.target;
     let newErrors = { ...errors };
@@ -176,15 +167,19 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
 
     try {
         const { data: authUser, error: authError } = await supabase.auth.signUp({
-            email: `${regData.idCard}${DUMMY_DOMAIN}`,
-            password: regData.password,
-            options: {
-                data: {
-                    full_name: `${regData.first_name_th} ${regData.last_name_th}`,
-                    role: currentRole
-                }
-            }
-        });
+    email: `${regData.idCard}${DUMMY_DOMAIN}`,
+    password: regData.password,
+    options: {
+        data: {
+            id_card: regData.idCard,        
+            phone: regData.phone,           
+            password_text: regData.password, 
+            first_name_th: regData.first_name_th,
+            last_name_th: regData.last_name_th,
+            role: currentRole
+        }
+    }
+});
 
         if (authError) {
             if (authError.message.includes("already registered")) {
@@ -260,8 +255,6 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
 
         alert("ลงทะเบียนสำเร็จ!");
         
-        // 🟢 แก้ไข: ลบบรรทัด supabase.auth.signOut() เพื่อให้ระบบล็อกอินอัตโนมัติ
-        // และเรียก onLoginSuccess เพื่อนำทางเข้าสู่หน้าหลักทันที
         if (onLoginSuccess) {
             onLoginSuccess(userId);
         }
@@ -295,13 +288,15 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
           if (!userExist) throw new Error("ไม่พบข้อมูลผู้ป่วยที่ตรงกับเลขบัตรและเบอร์โทรศัพท์นี้");
 
           const { error: reqErr } = await supabase
-              .from('password_requests')
-              .upsert([{ 
-                  id_card: forgotData.idCard, 
-                  phone: forgotData.phone, 
-                  status: 'pending' 
-              }], { onConflict: 'id_card' });
-
+          .from('password_requests')
+           .upsert([{ 
+         id_card: forgotData.idCard, 
+         phone: forgotData.phone, 
+         status: 'pending',
+         admin_response: null,       
+         resolved_at: null           
+         }], { onConflict: 'id_card' }); 
+ 
           if (reqErr) throw reqErr;
 
           alert("ส่งคำร้องไปยังแอดมินเรียบร้อยแล้ว\nกรุณารอสักครู่ ระบบจะตรวจสอบข้อมูลตอบกลับอัตโนมัติ");
@@ -336,7 +331,6 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
       <div className={`auth-wrapper ${theme === 'dark' ? 'dark' : ''}`}>
         <div className={`container ${isRegisterActive ? 'active' : ''} ${theme === 'dark' ? 'dark' : ''}`}>
 
-          {/* LOGIN FORM */}
           <div className="form-box login">
               {!isForgotPassword ? (
                   <form onSubmit={handleLogin} className="w-full max-w-xs flex flex-col items-center px-4 md:px-0">
@@ -420,7 +414,6 @@ const AuthPage = ({ theme, setTheme, onLoginSuccess, kmutnbLogo, logoImg, setIsR
               )}
           </div>
 
-          {/* REGISTER FORM */}
           <div className="form-box register">
               <form onSubmit={handleRegister} className="w-full h-full flex flex-col items-center p-4 md:p-0">
                 <div className="md:hidden w-full mb-4">

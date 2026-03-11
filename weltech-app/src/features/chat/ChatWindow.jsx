@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../supabaseClient'; 
 import {
   User, Stethoscope, MessageCircle, FileText, Download,
-  BellRing, ClipboardList, CheckCheck, ImageIcon, Paperclip, FileUp, Loader
+  BellRing, ClipboardList, CheckCheck, ImageIcon, Paperclip, FileUp, Loader, ArrowLeft
 } from 'lucide-react';
 
-const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot }) => {
+const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot, onBack }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
@@ -122,13 +122,12 @@ const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot 
           
           if (historyError) {
               console.error("History Insert Error:", historyError);
-              alert("ส่งแชทสำเร็จ แต่บันทึกประวัติล้มเหลว (กรุณาเช็ค Table Database)");
+              alert("ส่งแชทสำเร็จ แต่บันทึกประวัติล้มเหลว");
           } else {
               alert("ส่งผลตรวจและบันทึกประวัติเรียบร้อยแล้ว");
           }
 
       } catch (error) {
-          console.error("Process Error:", error);
           alert("เกิดข้อผิดพลาด: " + error.message);
       } finally {
           setIsUploading(false);
@@ -139,21 +138,18 @@ const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot 
     e.preventDefault();
     if (!input.trim() && !selectedFile) return;
 
-    let fileUrl = null;
-    let fileType = null;
-    let fileName = null;
-
     setIsUploading(true);
-
     try {
+        let fileUrl = null;
+        let fileType = null;
+        let fileName = null;
+
         if (selectedFile) {
             const fileExt = selectedFile.name.split('.').pop();
             const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
             const filePath = `${roomId}/${uniqueFileName}`;
-
             const { error: uploadError } = await supabase.storage.from('chat-files').upload(filePath, selectedFile);
             if (uploadError) throw uploadError;
-
             const { data: { publicUrl } } = supabase.storage.from('chat-files').getPublicUrl(filePath);
             fileUrl = publicUrl;
             fileType = selectedFile.type;
@@ -174,7 +170,6 @@ const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot 
         if (error) throw error;
         setInput('');
         setSelectedFile(null);
-
     } catch (error) {
         alert("ส่งข้อความไม่สำเร็จ: " + error.message);
     } finally {
@@ -183,100 +178,90 @@ const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot 
   };
 
   return (
-    <div className="flex flex-col h-full relative w-full overflow-hidden">
-      {/* Header Chat */}
-      <div className={`p-3 border-b flex justify-between items-center shrink-0 ${theme === 'dark' ? 'border-slate-700 bg-slate-800' : 'border-gray-100 bg-white'}`}>
-        <div className="flex items-center gap-2">
-           <div className={`p-1.5 md:p-2 rounded-full ${theme === 'dark' ? 'bg-slate-700' : 'bg-teal-50 text-teal-600'}`}>
-              {userProfile.role === 'doctor' ? <User size={18} className="md:w-5 md:h-5"/> : <Stethoscope size={18} className="md:w-5 md:h-5"/>}
+    <div className="flex flex-col h-full relative w-full overflow-hidden bg-pattern">
+      <div className={`p-3 border-b flex items-center gap-3 shrink-0 z-30 ${theme === 'dark' ? 'border-slate-700 bg-slate-800' : 'border-gray-100 bg-white'}`}>
+        {onBack && (
+          <button 
+            onClick={onBack}
+            className={`md:hidden p-2 rounded-full transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 text-white' : 'hover:bg-gray-100 text-gray-600'}`}
+          >
+            <ArrowLeft size={22} />
+          </button>
+        )}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+           <div className={`p-1.5 md:p-2 rounded-full shrink-0 ${theme === 'dark' ? 'bg-slate-700 text-teal-400' : 'bg-teal-50 text-teal-600'}`}>
+              {userProfile.role === 'doctor' ? <User size={20}/> : <Stethoscope size={20}/>}
            </div>
-           <div>
-              <h3 className={`font-bold text-xs md:text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{targetName}</h3>
-              <span className="text-[9px] md:text-[10px] text-green-500 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-green-500 animate-pulse"></span> ออนไลน์
+           <div className="min-w-0">
+              <h3 className={`font-bold text-sm md:text-base truncate ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{targetName}</h3>
+              <span className="text-[10px] md:text-xs text-green-500 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> ออนไลน์
               </span>
            </div>
         </div>
       </div>
 
-      {/* Chat Area */}
-      <div className={`flex-1 overflow-y-auto p-3 md:p-4 space-y-3 custom-scroll ${theme === 'dark' ? 'bg-slate-900' : 'bg-gray-50'}`}>
+      <div className={`flex-1 overflow-y-auto p-3 md:p-6 space-y-4 custom-scroll ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-gray-50/50'}`}>
         {messages.map((msg, idx) => {
           const isMyMessage = msg.sender_id === userProfile.user_id;
-          const isBot = msg.role === 'bot' || msg.sender_id === 'SYSTEM_BOT';
-          
-          let alignRight = isMyMessage;
-          if (userProfile.role === 'doctor' && isBot) {
-              alignRight = true; 
-          }
-
-          const isImage = msg.file_type && msg.file_type.startsWith('image/');
+          const isBot = msg.role === 'bot';
+          const alignRight = isMyMessage || (userProfile.role === 'doctor' && isBot);
           const isBotStyle = isBot || msg.message.startsWith('🤖') || msg.message.startsWith('🔔');
 
           return (
-            <div key={idx} className={`flex flex-col ${alignRight ? 'items-end' : 'items-start'} animate-fade-in w-full`}>
-              
+            <div key={idx} className={`flex flex-col ${alignRight ? 'items-end' : 'items-start'} w-full`}>
               {isBotStyle ? (
-                  // 🟢 แก้ไข: ปรับ max-w ให้เหมาะกับมือถือ
-                  <div className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-xl shadow-md border-l-4 mb-1 
+                  <div className={`max-w-[92%] md:max-w-[80%] p-3 md:p-4 rounded-2xl shadow-sm border-l-4 mb-1 
                       ${theme === 'dark' ? 'bg-slate-800 border-teal-500 text-gray-200' : 'bg-white border-teal-500 text-gray-700'}
-                      ${alignRight ? 'rounded-tr-none' : 'rounded-tl-none'} 
                   `}>
-                      <div className="flex items-start gap-2 md:gap-3">
-                          <div className="p-1.5 md:p-2 bg-teal-100 text-teal-600 rounded-full shrink-0">
-                              {msg.message.includes('นัดหมาย') ? <BellRing size={20} className="md:w-6 md:h-6"/> : <ClipboardList size={20} className="md:w-6 md:h-6"/>}
+                      <div className="flex items-start gap-3">
+                          <div className="p-2 bg-teal-50 text-teal-600 rounded-full shrink-0 hidden sm:block">
+                              {msg.message.includes('นัดหมาย') ? <BellRing size={18}/> : <ClipboardList size={18}/>}
                           </div>
-                          <div className="flex-1 min-w-0">
-                              <div className="text-xs md:text-sm whitespace-pre-wrap leading-relaxed font-medium">{msg.message}</div>
+                          <div className="flex-1 min-w-0 text-xs md:text-sm">
+                              <div className="whitespace-pre-wrap leading-relaxed">{msg.message}</div>
                               {msg.file_url && (
-                                  <div className="mt-3 pt-3 border-t border-dashed border-gray-200">
-                                            <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded bg-gray-100 hover:bg-gray-200 transition-colors text-blue-600 text-xs md:text-sm font-bold">
-                                              <FileText size={16} className="md:w-[18px] md:h-[18px]" /> 
-                                              <span className="truncate">เปิดไฟล์: {msg.file_name || 'เอกสาร'}</span>
-                                              <Download size={12} className="ml-auto"/>
-                                           </a>
+                                  <div className="mt-3 pt-3 border-t border-dashed border-gray-100">
+                                      <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 rounded bg-teal-50 text-teal-700 font-bold hover:bg-teal-100 transition-all">
+                                        <FileText size={16} /> 
+                                        <span className="truncate flex-1">ผลตรวจ: {msg.file_name}</span>
+                                        <Download size={14}/>
+                                      </a>
                                   </div>
                               )}
-                              <div className="mt-2 text-[9px] md:text-[10px] text-gray-400 text-right">
-                                  {new Date(msg.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
-                              </div>
                           </div>
                       </div>
                   </div>
               ) : (
-                  // 🟢 แก้ไข: ปรับ max-w และ padding ให้กระชับขึ้นบนมือถือ
-                  <div className={`max-w-[85%] md:max-w-[70%] p-2.5 md:p-3 rounded-2xl text-xs md:text-sm shadow-sm relative ${
+                  <div className={`max-w-[85%] md:max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${
                     alignRight 
                     ? 'bg-teal-600 text-white rounded-tr-none' 
                     : (theme === 'dark' ? 'bg-slate-700 text-white rounded-tl-none' : 'bg-white text-gray-800 border rounded-tl-none')
                   }`}>
                     {msg.file_url && (
                         <div className="mb-2">
-                            {isImage ? (
-                                <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
-                                    <img src={msg.file_url} alt="attch" className="max-w-full h-auto rounded-lg border border-white/20" />
-                                </a>
+                            {msg.file_type?.startsWith('image/') ? (
+                                <img src={msg.file_url} alt="attach" className="max-w-full h-auto rounded-lg" />
                             ) : (
-                                <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 p-2 rounded ${alignRight ? 'bg-white/20' : 'bg-gray-100 dark:bg-slate-600'}`}>
+                                <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-2 p-2 rounded ${alignRight ? 'bg-white/20 text-white' : 'bg-gray-100'}`}>
                                     <FileText size={18} />
-                                    <span className="underline truncate max-w-[120px] md:max-w-[150px]">{msg.file_name}</span>
-                                    <Download size={12} />
+                                    <span className="underline truncate flex-1">{msg.file_name}</span>
+                                    <Download size={14} />
                                 </a>
                             )}
                         </div>
                     )}
-                    {msg.message && <p className="whitespace-pre-wrap">{msg.message}</p>}
+                    <p className="whitespace-pre-wrap break-words">{msg.message}</p>
                   </div>
               )}
-
-              <div className="flex items-center gap-1 mt-1">
-                 <span className={`text-[8px] md:text-[9px] ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div className="flex items-center gap-1 mt-1 px-1">
+                 <span className="text-[9px] text-gray-400">
                     {new Date(msg.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'})}
                  </span>
                  {alignRight && !isBotStyle && ( 
-                    msg.read 
-                    ? <div className="flex items-center gap-0.5 text-[8px] md:text-[9px] text-teal-500">อ่านแล้ว <CheckCheck size={10} className="md:w-3 md:h-3"/></div>
-                    : <span className="text-[8px] md:text-[9px] text-gray-300">ส่งแล้ว</span>
+                    <span className={`text-[9px] font-bold ${msg.read ? 'text-teal-500' : 'text-gray-300'}`}>
+                        {msg.read ? 'อ่านแล้ว' : 'ส่งแล้ว'}
+                    </span>
                  )}
               </div>
             </div>
@@ -285,41 +270,35 @@ const ChatWindow = ({ roomId, userProfile, theme, targetName, patientNameForBot 
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className={`p-2 md:p-3 border-t shrink-0 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
+      <div className={`p-3 md:p-4 border-t z-30 ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
         {selectedFile && (
-            <div className={`flex justify-between items-center p-2 mb-2 rounded text-[10px] md:text-xs ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                <div className="flex items-center gap-2 truncate">
-                    {selectedFile.type.startsWith('image/') ? <ImageIcon size={12}/> : <Paperclip size={12}/>} 
-                    <span className="truncate">{selectedFile.name}</span>
-                </div>
-                <button onClick={() => setSelectedFile(null)} className="text-red-500 font-bold hover:bg-red-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">×</button>
+            <div className={`flex justify-between items-center p-2 mb-2 rounded-lg text-xs ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-gray-50'}`}>
+                <span className="truncate flex-1 pr-2">{selectedFile.name}</span>
+                <button onClick={() => setSelectedFile(null)} className="text-red-500 font-bold px-2 text-lg">×</button>
             </div>
         )}
-        <div className="flex gap-1 md:gap-2 items-center">
+        <div className="flex gap-2 items-center">
              {userProfile.role === 'doctor' && (
-                <label className="cursor-pointer p-1.5 md:p-2 rounded-full transition-colors bg-teal-50 text-teal-600 hover:bg-teal-100 shrink-0" title="ส่งผลการตรวจ (Bot)">
+                <label className="cursor-pointer p-2.5 rounded-full bg-teal-50 text-teal-600 hover:bg-teal-100 shrink-0 shadow-sm transition-all active:scale-90">
                     <input type="file" className="hidden" onChange={handleSendMedicalResult} />
-                    <ClipboardList size={18} className="md:w-5 md:h-5" />
+                    <ClipboardList size={22} />
                 </label>
              )}
-
-            <label className={`cursor-pointer p-1.5 md:p-2 rounded-full transition-colors shrink-0 ${theme === 'dark' ? 'text-gray-400 hover:bg-slate-700' : 'text-gray-500 hover:bg-gray-100'}`} title="แนบไฟล์ทั่วไป">
+            <label className={`cursor-pointer p-2.5 rounded-full shrink-0 transition-all active:scale-90 ${theme === 'dark' ? 'bg-slate-700 text-gray-300' : 'bg-gray-100 text-gray-500'}`}>
                 <input type="file" className="hidden" onChange={handleFileChange} />
-                <FileUp size={18} className="md:w-5 md:h-5" />
+                <FileUp size={22} />
             </label>
-
-            <form onSubmit={handleSend} className="flex-1 flex gap-1 md:gap-2">
+            <form onSubmit={handleSend} className="flex-1 flex gap-2">
                 <input 
                   type="text" 
                   value={input} 
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={isUploading ? "กำลังโหลด..." : "พิมพ์ข้อความ..."}
                   disabled={isUploading}
-                  className={`flex-1 p-2 md:p-2.5 rounded-xl border outline-none text-xs md:text-sm ${theme === 'dark' ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-100 border-transparent text-gray-800'}`}
+                  className={`flex-1 px-4 py-2.5 rounded-2xl border outline-none text-sm transition-all ${theme === 'dark' ? 'bg-slate-700 border-slate-600 text-white' : 'bg-gray-50 border-transparent focus:bg-white focus:border-teal-500 text-gray-800'}`}
                 />
-                <button type="submit" disabled={(!input.trim() && !selectedFile) || isUploading} className="p-2 md:p-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-all shadow-md disabled:opacity-50 shrink-0">
-                  {isUploading ? <Loader size={18} className="animate-spin"/> : <MessageCircle size={18} className="md:w-5 md:h-5" />}
+                <button type="submit" disabled={(!input.trim() && !selectedFile) || isUploading} className="p-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-2xl transition-all shadow-md active:scale-95 disabled:opacity-50 shrink-0">
+                  {isUploading ? <Loader size={22} className="animate-spin"/> : <MessageCircle size={22} />}
                 </button>
             </form>
         </div>

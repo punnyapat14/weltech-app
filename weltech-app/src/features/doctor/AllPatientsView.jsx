@@ -66,7 +66,7 @@ const AllPatientsView = ({ patientsList = [], userProfile, theme }) => {
         cutout: '65%', 
         rotation: -90, 
         animation: {
-            duration: 2500, // ตั้งเวลาให้นานพอที่จะเห็นการหมุน
+            duration: 2500, 
             easing: 'easeOutQuart',
             animateRotate: true,
             animateScale: true
@@ -85,11 +85,11 @@ const AllPatientsView = ({ patientsList = [], userProfile, theme }) => {
         }
     };
 
-    // ✅ หัวใจหลักในการแก้ปัญหา: ใช้ useMemo ล็อกตัวกราฟไว้ ไม่ให้วาดใหม่ถ้าข้อมูลไม่เปลี่ยนจริงๆ
+    
     const renderedChart = useMemo(() => {
         if (patientsList.length === 0) return <div className="text-gray-400">ไม่มีข้อมูล</div>;
         return <Doughnut data={ageChartData} options={chartOptions} />;
-    }, [ageChartData, theme]); // จะวาดใหม่แค่ตอนเปลี่ยน Theme หรือ ข้อมูลคนไข้เปลี่ยนเท่านั้น
+    }, [ageChartData, theme]); 
 
     return (
         <div className="flex flex-col h-full gap-6 p-2 overflow-y-auto custom-scroll">
@@ -101,7 +101,6 @@ const AllPatientsView = ({ patientsList = [], userProfile, theme }) => {
                  <div className={`lg:col-span-1 p-6 rounded-[2rem] border shadow-sm flex flex-col items-center ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-100'}`}>
                     <h3 className={`text-lg font-bold mb-4 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>สถิติช่วงอายุผู้ป่วย</h3>
                     <div className="h-64 w-full flex justify-center relative">
-                        {/* เรียกใช้ตัวแปรที่ถูกล็อกค่าไว้ */}
                         {renderedChart}
                     </div>
                 </div>
